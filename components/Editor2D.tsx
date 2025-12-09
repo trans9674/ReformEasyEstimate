@@ -1,4 +1,3 @@
-
 // ... (imports and top of file remain unchanged)
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Site, ExteriorItem, Point, ToolMode, ItemType, DrawingElement, LineStyle } from '../types';
@@ -118,12 +117,10 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   const activePointersRef = useRef<Map<number, Point>>(new Map());
   const gestureStateRef = useRef<{
     initialDistance: number;
-    initialAngle: number;
     initialRotation: number;
     panStart: Point;
     isGesturing: boolean;
     currentDistance: number;
-    currentAngle: number;
   } | null>(null);
 
   useEffect(() => {
@@ -217,16 +214,13 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
       
       gestureStateRef.current = {
         initialDistance: distance,
-        initialAngle: angle,
         initialRotation: rotation,
         panStart: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
         isGesturing: true,
         currentDistance: distance,
-        currentAngle: angle
       };
       setIsPanning(false);
       panStartPointRef.current = null;
@@ -264,7 +258,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
       const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
       const gesture = gestureStateRef.current;
 
@@ -273,11 +266,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       const panDy = center.y - gesture.panStart.y;
       onPan(panDx, panDy);
       gesture.panStart = center;
-
-      // Rotation
-      const angleDelta = angle - gesture.currentAngle;
-      onRotate(rotation + angleDelta);
-      gesture.currentAngle = angle;
       
       // Zoom
       if (gesture.currentDistance > 0) {
