@@ -1046,6 +1046,7 @@ const App: React.FC = () => {
               pendingConfirmation={pendingConfirmation}
               onCancelConfirmation={handlePendingCancel}
               showGuideRectangle={isImageLoaded && !rotationAdjusted}
+              currentSetupStep={currentSetupStep}
             />
           ) : (
             <Editor3D 

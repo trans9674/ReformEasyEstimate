@@ -37,6 +37,7 @@ interface Editor2DProps {
   pendingConfirmation: { type: 'site' | 'item', points: Point[] } | null;
   onCancelConfirmation: () => void;
   showGuideRectangle?: boolean;
+  currentSetupStep: number;
 }
 
 const getDistance = (p1: Point, p2: Point) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
@@ -101,6 +102,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   pendingConfirmation,
   onCancelConfirmation,
   showGuideRectangle = false,
+  currentSetupStep,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const contentGroupRef = useRef<SVGGElement>(null);
@@ -123,6 +125,10 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     isGesturing: boolean;
     currentDistance: number;
   } | null>(null);
+  
+  // FIX: The return type of setTimeout in the browser is number, not NodeJS.Timeout.
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressDragInfoRef = useRef<{ startPoint: Point } | null>(null);
 
   useEffect(() => {
     if (toolMode === ToolMode.SET_SCALE && scalePoints.length === 1 && site.points.length > 1) {
@@ -146,7 +152,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
 
   const getCursor = () => {
     if (isPanning || gestureStateRef.current?.isGesturing) return 'grabbing';
-    if (toolMode === ToolMode.EDIT_SITE) {
+    if (toolMode === ToolMode.EDIT_SITE || (currentSetupStep === 3 && isEditing)) {
         if(isEditing) return 'grabbing';
         if (hoveredVertexIndex !== null) return 'grab';
         if (hoveredEdgeIndex !== null) return 'move';
@@ -208,33 +214,64 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if (activePointersRef.current.size === 2) {
-      // FIX: Explicitly type `pointers` as an array of Point to resolve type inference issues.
-      const pointers: Point[] = Array.from(activePointersRef.current.values());
-      const [p1, p2] = pointers;
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      gestureStateRef.current = {
-        initialDistance: distance,
-        initialRotation: rotation,
-        panStart: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
-        isGesturing: true,
-        currentDistance: distance,
-      };
-      setIsPanning(false);
-      panStartPointRef.current = null;
-    } else if (activePointersRef.current.size === 1) {
-      if (e.button === 2 || e.pointerType === 'touch') {
-          setIsPanning(true);
-          panStartPointRef.current = { x: e.clientX, y: e.clientY };
-      }
+    // Disable gestures in steps 3 and 4
+    if (currentSetupStep === 3 || currentSetupStep === 4) {
+      // Allow single pointer down for clicks and long-press
+    } else {
+        if (activePointersRef.current.size === 2) {
+          const pointers: Point[] = Array.from(activePointersRef.current.values());
+          const [p1, p2] = pointers;
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          gestureStateRef.current = {
+            initialDistance: distance,
+            initialRotation: rotation,
+            panStart: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
+            isGesturing: true,
+            currentDistance: distance,
+          };
+          setIsPanning(false);
+          panStartPointRef.current = null;
+        } else if (activePointersRef.current.size === 1) {
+          if (e.button === 2 || e.pointerType === 'touch') {
+              setIsPanning(true);
+              panStartPointRef.current = { x: e.clientX, y: e.clientY };
+          }
+        }
     }
     
     if (activePointersRef.current.size > 1) return;
 
     const point = getSVGPoint(e);
+
+    // Long press logic for Step 3 (Site Drawing) to move vertices
+    if (currentSetupStep === 3 && toolMode === ToolMode.DRAW_SITE && !isEditing) {
+        const vertexHoverDist = snapDistancePixels / zoom;
+        let vertexToDrag = -1;
+        for (let i = 0; i < site.points.length; i++) {
+            if (getDistance(point, site.points[i]) < vertexHoverDist) {
+                vertexToDrag = i;
+                break;
+            }
+        }
+
+        if (vertexToDrag !== -1) {
+            longPressDragInfoRef.current = { startPoint: { x: e.clientX, y: e.clientY } };
+
+            longPressTimerRef.current = window.setTimeout(() => {
+                if (longPressDragInfoRef.current) {
+                    onSiteVertexMouseDown(vertexToDrag);
+                    longPressDragInfoRef.current = null;
+                }
+            }, 400);
+
+            e.preventDefault();
+            return;
+        }
+    }
+
     if (toolMode === ToolMode.EDIT_SITE) {
         if (hoveredVertexIndex !== null) {
             onSiteVertexMouseDown(hoveredVertexIndex);
@@ -252,8 +289,21 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     if (!activePointersRef.current.has(e.pointerId)) return;
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
+    if (longPressDragInfoRef.current && !isEditing) {
+        const moveDist = Math.sqrt(
+            (e.clientX - longPressDragInfoRef.current.startPoint.x)**2 + 
+            (e.clientY - longPressDragInfoRef.current.startPoint.y)**2
+        );
+        if (moveDist > 10) { // 10px tolerance to prevent cancelling on small jitters
+            if (longPressTimerRef.current) {
+                clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+            }
+            longPressDragInfoRef.current = null;
+        }
+    }
+
     if (gestureStateRef.current?.isGesturing && activePointersRef.current.size >= 2) {
-      // FIX: Explicitly type `pointers` as an array of Point to resolve type inference issues.
       const pointers: Point[] = Array.from(activePointersRef.current.values());
       const [p1, p2] = pointers;
       const dx = p2.x - p1.x;
@@ -279,6 +329,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     }
     
     if (isPanning && panStartPointRef.current) {
+        if (currentSetupStep === 3 || currentSetupStep === 4) return;
         const dx = (e.clientX - panStartPointRef.current.x) * 1.2;
         const dy = (e.clientY - panStartPointRef.current.y) * 1.2;
         panStartPointRef.current = { x: e.clientX, y: e.clientY };
@@ -294,7 +345,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         return;
     }
         
-    // Reset hover states
     setHoveredVertexIndex(null);
     setHoveredEdgeIndex(null);
     setHoveredScaleVertexIndex(null);
@@ -433,6 +483,14 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     activePointersRef.current.delete(e.pointerId);
 
+    if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+        // If timer is cleared before firing, it was a short click.
+        // We might want to trigger a normal click here if needed, but for now we do nothing on short-clicking a vertex in step 3.
+    }
+    longPressDragInfoRef.current = null;
+
     if (activePointersRef.current.size < 2 && gestureStateRef.current?.isGesturing) {
       gestureStateRef.current = null;
     }
@@ -441,7 +499,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       setIsPanning(false);
       panStartPointRef.current = null;
     } else if (activePointersRef.current.size === 1) {
-      // FIX: Use destructuring to ensure correct type inference for the remaining pointer.
       const [pointer]: Point[] = Array.from(activePointersRef.current.values());
       setIsPanning(true);
       panStartPointRef.current = pointer;
@@ -453,6 +510,13 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   const handlePointerLeave = (e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     activePointersRef.current.delete(e.pointerId);
+
+    if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+    }
+    longPressDragInfoRef.current = null;
+    
     if (activePointersRef.current.size < 2 && gestureStateRef.current?.isGesturing) {
       gestureStateRef.current = null;
     }
@@ -460,7 +524,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       setIsPanning(false);
       panStartPointRef.current = null;
     } else if (activePointersRef.current.size === 1) {
-      // FIX: Explicitly type `pointer` as Point to resolve type inference issues.
       const [pointer]: Point[] = Array.from(activePointersRef.current.values());
       setIsPanning(true);
       panStartPointRef.current = pointer;
@@ -469,6 +532,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    if (currentSetupStep === 3 || currentSetupStep === 4) return;
     const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
     applyZoom(zoomFactor, { x: e.clientX, y: e.clientY });
   };
@@ -493,23 +557,17 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   const lastActivePoint = currentDrawingPoints.length > 0 ? currentDrawingPoints[currentDrawingPoints.length - 1] : null;
   const minPointsToClose = toolMode === ToolMode.DRAW_SITE ? 3 : 2;
   const canCloseShape = isDrawingPolygon && currentDrawingPoints.length >= minPointsToClose;
-  // Increase visual snap range for closing on mobile (match logic in App.tsx)
   const closeSnapDistance = snapDistancePixels * 4.0;
   
   const calculatedEndPoint = useMemo(() => {
     if (!mousePos) return null;
-    
-    // 1. Close snap
     if (canCloseShape && getDistance(currentDrawingPoints[0], mousePos) < closeSnapDistance / zoom) {
       return currentDrawingPoints[0];
     }
-    
-    // 2. Vertex/Edge snap (overrides orthogonal/right-angle)
     if (snappedPoint) {
       return snappedPoint.point;
     }
     
-    // 3. Orthogonal and Right-angle snap for DRAW_SITE and FLOORING/TATAMI preview
     const isOrthogonalSnappingActive = (toolMode === ToolMode.DRAW_SITE && lastActivePoint) || 
                                      (toolMode === ToolMode.ADD_ITEM &&
                                       (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
@@ -518,8 +576,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     if (isOrthogonalSnappingActive) {
         let finalPoint = { ...mousePos };
         const snapDistanceSVG = snapDistancePixels / zoom;
-
-        // Guaranteed to exist by isOrthogonalSnappingActive check
         const lastPoint = lastActivePoint!; 
         
         const dx = finalPoint.x - lastPoint.x;
@@ -564,8 +620,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         
         return finalPoint;
     }
-    
-    // Default for other tools or when no points exist
     return mousePos;
   }, [mousePos, snappedPoint, toolMode, site.points, tempPoints, activeItemType, closeSnapDistance, zoom, canCloseShape, currentDrawingPoints, lastActivePoint, snapDistancePixels]);
 
@@ -681,9 +735,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     const strokeWidth = (isSelected ? 4 : 2) / zoom;
     const strokeColorBase = isSelected ? '#EF4444' : '#555'; 
 
-    // Handle props for items also need to prevent bubbling or handling touch correctly?
-    // Using standard onClick / onContextMenu here is fine as they bubble up 
-    // and we have touchAction: none on parent SVG.
     const handleProps = {
         onClick: (e: React.MouseEvent) => {
             e.stopPropagation();
@@ -696,13 +747,12 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         style: { cursor: toolMode === ToolMode.SELECT ? 'pointer' : 'default' }
     };
 
-    // Polygon Items
     if (itemInfo.unit === 'm²') {
         if (points.length < 3) return null;
         let fillColor = 'rgba(200, 200, 200, 0.5)';
-        if (type === ItemType.FLOORING) fillColor = 'rgba(210, 180, 140, 0.8)'; // Tan
-        else if (type === ItemType.TATAMI) fillColor = 'rgba(173, 219, 136, 0.8)'; // Greenish
-        else if (type === ItemType.CLOSET) fillColor = 'rgba(255, 228, 196, 0.6)'; // Bisque
+        if (type === ItemType.FLOORING) fillColor = 'rgba(210, 180, 140, 0.8)';
+        else if (type === ItemType.TATAMI) fillColor = 'rgba(173, 219, 136, 0.8)';
+        else if (type === ItemType.CLOSET) fillColor = 'rgba(255, 228, 196, 0.6)';
 
         return (
             <polygon
@@ -716,7 +766,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         );
     }
     
-    // Line Items (Walls, etc.)
     if (type === ItemType.WALL_CROSS || type === ItemType.DOOR || type === ItemType.WINDOW) {
         if (points.length < 2) return null;
         let color = '#333';
@@ -744,7 +793,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         );
     }
 
-    // Point Items
     if (points.length === 1) {
         const p = points[0];
         let r = 8 / zoom;
@@ -779,47 +827,14 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       <div className="relative w-full h-full overflow-hidden bg-white">
         <style>
           {`
-            @keyframes pulse-ring {
-              0% { r: 6px; opacity: 0.8; stroke-width: 2px; }
-              50% { r: 20px; opacity: 0.0; stroke-width: 0px; }
-              100% { r: 6px; opacity: 0.8; stroke-width: 2px; }
-            }
-            .pulse-circle {
-              animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-              transform-origin: center;
-              fill: rgba(249, 115, 22, 0.6);
-              stroke: rgba(249, 115, 22, 1);
-            }
-            @keyframes blink-effect {
-              50% { opacity: 0.5; }
-            }
-            .blinking-dot {
-              animation: blink-effect 1.2s step-end infinite;
-            }
-            @keyframes ripple-effect {
-              0% {
-                transform: scale(1);
-                opacity: 0.6;
-              }
-              100% {
-                transform: scale(3);
-                opacity: 0;
-              }
-            }
-            .ripple-circle {
-              animation: ripple-effect 1.5s ease-out infinite;
-              transform-origin: center;
-              stroke: #4ade80; /* green-400 */
-              fill: none;
-            }
-            @keyframes move-dashes {
-              to {
-                stroke-dashoffset: -40px;
-              }
-            }
-            .scaling-line-animated {
-              animation: move-dashes 0.8s linear infinite;
-            }
+            @keyframes pulse-ring { 0% { r: 6px; opacity: 0.8; } 50% { r: 20px; opacity: 0; } 100% { r: 6px; opacity: 0.8; } }
+            .pulse-circle { animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; transform-origin: center; fill: rgba(249, 115, 22, 0.6); }
+            @keyframes blink-effect { 50% { opacity: 0.5; } }
+            .blinking-dot { animation: blink-effect 1.2s step-end infinite; }
+            @keyframes ripple-effect { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(3); opacity: 0; } }
+            .ripple-circle { animation: ripple-effect 1.5s ease-out infinite; transform-origin: center; stroke: #4ade80; fill: none; }
+            @keyframes move-dashes { to { stroke-dashoffset: -40px; } }
+            .scaling-line-animated { animation: move-dashes 0.8s linear infinite; }
           `}
         </style>
         {!backgroundImage && (
@@ -838,348 +853,36 @@ export const Editor2D: React.FC<Editor2DProps> = ({
           onPointerLeave={handlePointerLeave}
           onWheel={handleWheel}
           onContextMenu={handleContextMenu}
-          style={{ 
-            cursor: getCursor(), 
-            touchAction: 'none', // Critical for preventing screen scroll on mobile
-            userSelect: 'none', 
-            WebkitUserSelect: 'none'
-          }}
+          style={{ cursor: getCursor(), touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
         >
             <defs>
-                <pattern id="minorGrid" width={MINOR_GRID_SPACING} height={MINOR_GRID_SPACING} patternUnits="userSpaceOnUse">
-                    <path d={`M ${MINOR_GRID_SPACING} 0 L 0 0 0 ${MINOR_GRID_SPACING}`} fill="none" stroke="#E0E0E0" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
-                </pattern>
-                <pattern id="majorGrid" width={MAJOR_GRID_SPACING} height={MAJOR_GRID_SPACING} patternUnits="userSpaceOnUse">
-                    <rect width={MAJOR_GRID_SPACING} height={MAJOR_GRID_SPACING} fill="url(#minorGrid)"/>
-                    <path d={`M ${MAJOR_GRID_SPACING} 0 L 0 0 0 ${MAJOR_GRID_SPACING}`} fill="none" stroke="#CCCCCC" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                </pattern>
+                <pattern id="minorGrid" width={MINOR_GRID_SPACING} height={MINOR_GRID_SPACING} patternUnits="userSpaceOnUse"><path d={`M ${MINOR_GRID_SPACING} 0 L 0 0 0 ${MINOR_GRID_SPACING}`} fill="none" stroke="#E0E0E0" strokeWidth="0.5" vectorEffect="non-scaling-stroke" /></pattern>
+                <pattern id="majorGrid" width={MAJOR_GRID_SPACING} height={MAJOR_GRID_SPACING} patternUnits="userSpaceOnUse"><rect width={MAJOR_GRID_SPACING} height={MAJOR_GRID_SPACING} fill="url(#minorGrid)"/><path d={`M ${MAJOR_GRID_SPACING} 0 L 0 0 0 ${MAJOR_GRID_SPACING}`} fill="none" stroke="#CCCCCC" strokeWidth="1" vectorEffect="non-scaling-stroke" /></pattern>
             </defs>
             <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
                 <g ref={contentGroupRef} transform={`rotate(${rotation} ${center.x} ${center.y})`}>
-                    {/* Grid Background */}
-                    {imageSize && (
-                        <rect
-                            x={center.x - gridCoverageSize / 2}
-                            y={center.y - gridCoverageSize / 2}
-                            width={gridCoverageSize}
-                            height={gridCoverageSize}
-                            fill="url(#majorGrid)"
-                        />
-                    )}
-
+                    {imageSize && (<rect x={center.x - gridCoverageSize / 2} y={center.y - gridCoverageSize / 2} width={gridCoverageSize} height={gridCoverageSize} fill="url(#majorGrid)" />)}
                     {backgroundImage && <image href={backgroundImage} x="0" y="0" width="100%" height="100%" />}
-                    
-                    {showGuideRectangle && imageSize && (
-                      <rect
-                        x={imageSize.width * 0.1}
-                        y={imageSize.height * 0.1}
-                        width={imageSize.width * 0.8}
-                        height={imageSize.height * 0.8}
-                        fill="none"
-                        stroke="rgba(59, 130, 246, 0.9)"
-                        strokeWidth={2 / zoom}
-                        strokeDasharray={`${8 / zoom} ${4 / zoom}`}
-                        rx={10 / zoom}
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    )}
-
+                    {showGuideRectangle && imageSize && (<rect x={imageSize.width * 0.1} y={imageSize.height * 0.1} width={imageSize.width * 0.8} height={imageSize.height * 0.8} fill="none" stroke="rgba(59, 130, 246, 0.9)" strokeWidth={2 / zoom} strokeDasharray={`${8 / zoom} ${4 / zoom}`} rx={10 / zoom} style={{ pointerEvents: 'none' }} />)}
                     {drawings.map(renderDrawingElement)}
-
                     {items.map(renderItem)}
-
-                    {pendingConfirmation?.type === 'item' && (
-                        <polygon
-                            points={pendingConfirmation.points.map(p => `${p.x},${p.y}`).join(' ')}
-                            fill="rgba(239, 68, 68, 0.3)"
-                            stroke="#EF4444"
-                            strokeWidth={3 / zoom}
-                            strokeDasharray={`${6 / zoom}`}
-                        />
-                    )}
-                    
+                    {pendingConfirmation?.type === 'item' && (<polygon points={pendingConfirmation.points.map(p => `${p.x},${p.y}`).join(' ')} fill="rgba(239, 68, 68, 0.3)" stroke="#EF4444" strokeWidth={3 / zoom} strokeDasharray={`${6 / zoom}`} />)}
                     <g>
-                        <polygon
-                            points={site.points.map(p => `${p.x},${p.y}`).join(' ')}
-                            fill={isConfirming && pendingConfirmation?.type === 'site' ? "rgba(249, 115, 22, 0.3)" : "rgba(249, 115, 22, 0.1)"}
-                            stroke="#A1A1AA"
-                            strokeWidth={18 / zoom}
-                            strokeLinejoin="round"
-                        />
-                        <polygon
-                            points={site.points.map(p => `${p.x},${p.y}`).join(' ')}
-                            fill="none"
-                            stroke="#F97316"
-                            strokeWidth={10 / zoom}
-                            strokeLinejoin="round"
-                        />
+                        <polygon points={site.points.map(p => `${p.x},${p.y}`).join(' ')} fill={isConfirming && pendingConfirmation?.type === 'site' ? "rgba(249, 115, 22, 0.3)" : "rgba(249, 115, 22, 0.1)"} stroke="#A1A1AA" strokeWidth={18 / zoom} strokeLinejoin="round" />
+                        <polygon points={site.points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#F97316" strokeWidth={10 / zoom} strokeLinejoin="round" />
                     </g>
-                    
-                    {site.points.map((p, i) => {
-                        const isStartPoint = i === 0;
-                        const showBlink = toolMode === ToolMode.DRAW_SITE && !isConfirming && site.points.length >= 1 && isStartPoint;
-
-                        return (
-                            <circle 
-                                key={`site-vertex-${i}`}
-                                cx={p.x} 
-                                cy={p.y} 
-                                r={54 / zoom} 
-                                fill="#F97316" 
-                                stroke="white" 
-                                strokeWidth={3/zoom}
-                                className={showBlink ? 'blinking-dot' : ''}
-                            />
-                        );
-                    })}
-
-                    {toolMode === ToolMode.DRAW_SITE && !isConfirming && mousePos && site.points.length > 0 && dynamicEndPoint && (
-                    <g>
-                        <line
-                            x1={site.points[site.points.length - 1].x}
-                            y1={site.points[site.points.length - 1].y}
-                            x2={dynamicEndPoint.x}
-                            y2={dynamicEndPoint.y}
-                            stroke="#A1A1AA"
-                            strokeWidth={18 / zoom}
-                            strokeDasharray={`${24 / zoom}`}
-                            strokeLinecap="round"
-                        />
-                        <line
-                            x1={site.points[site.points.length - 1].x}
-                            y1={site.points[site.points.length - 1].y}
-                            x2={dynamicEndPoint.x}
-                            y2={dynamicEndPoint.y}
-                            stroke="#F97316"
-                            strokeWidth={10 / zoom}
-                            strokeDasharray={`${24 / zoom}`}
-                            strokeLinecap="round"
-                        />
-                    </g>
-                    )}
-
-                    {toolMode === ToolMode.ADD_ITEM && !isConfirming && tempPoints.length > 0 && mousePos && activeItemType && dynamicEndPoint && (
-                    <polyline
-                        points={[...tempPoints, dynamicEndPoint].map(p => `${p.x},${p.y}`).join(' ')}
-                        stroke="#EF4444"
-                        strokeWidth={12 / zoom}
-                        fill={ITEM_CATALOG[activeItemType].unit === 'm²' && isCloseToStart ? 'rgba(239, 68, 68, 0.3)' : 'none'}
-                        strokeDasharray={`${24 / zoom}`}
-                    />
-                    )}
-                    
+                    {site.points.map((p, i) => { const isStartPoint = i === 0; const showBlink = toolMode === ToolMode.DRAW_SITE && !isConfirming && site.points.length >= 1 && isStartPoint; return (<circle key={`site-vertex-${i}`} cx={p.x} cy={p.y} r={54 / zoom} fill="#F97316" stroke="white" strokeWidth={3/zoom} className={showBlink ? 'blinking-dot' : ''} />); })}
+                    {toolMode === ToolMode.DRAW_SITE && !isConfirming && mousePos && site.points.length > 0 && dynamicEndPoint && (<g><line x1={site.points[site.points.length - 1].x} y1={site.points[site.points.length - 1].y} x2={dynamicEndPoint.x} y2={dynamicEndPoint.y} stroke="#A1A1AA" strokeWidth={18 / zoom} strokeDasharray={`${24 / zoom}`} strokeLinecap="round" /><line x1={site.points[site.points.length - 1].x} y1={site.points[site.points.length - 1].y} x2={dynamicEndPoint.x} y2={dynamicEndPoint.y} stroke="#F97316" strokeWidth={10 / zoom} strokeDasharray={`${24 / zoom}`} strokeLinecap="round" /></g>)}
+                    {toolMode === ToolMode.ADD_ITEM && !isConfirming && tempPoints.length > 0 && mousePos && activeItemType && dynamicEndPoint && (<polyline points={[...tempPoints, dynamicEndPoint].map(p => `${p.x},${p.y}`).join(' ')} stroke="#EF4444" strokeWidth={12 / zoom} fill={ITEM_CATALOG[activeItemType].unit === 'm²' && isCloseToStart ? 'rgba(239, 68, 68, 0.3)' : 'none'} strokeDasharray={`${24 / zoom}`} />)}
                     {renderTempDrawing()}
-                    
-                    {toolMode === ToolMode.ADD_ITEM && activeItemType && (ITEM_CATALOG[activeItemType].unit === 'item') && mousePos && (
-                        <circle cx={mousePos.x} cy={mousePos.y} r={54 / zoom} fill="rgba(239, 68, 68, 0.5)" />
-                    )}
-                    
-                    {tempPoints.map((p, i) => {
-                        const isPolygonItem = activeItemType && ITEM_CATALOG[activeItemType].unit === 'm²';
-                        const isStartPoint = i === 0;
-                        const showBlink = toolMode === ToolMode.ADD_ITEM && !isConfirming && isPolygonItem && tempPoints.length >= 1 && isStartPoint;
-
-                        return (
-                            <circle
-                                key={`temp-${i}`}
-                                cx={p.x} 
-                                cy={p.y} 
-                                r={54 / zoom} 
-                                fill="#EF4444" 
-                                stroke="white" 
-                                strokeWidth={3/zoom}
-                                className={showBlink ? 'blinking-dot' : ''}
-                            />
-                        );
-                    })}
-                    
-                    {/* Active Point Pulsing Indicator (Last point added) */}
-                    {isDrawingPolygon && lastActivePoint && !isConfirming && (
-                        <circle 
-                            cx={lastActivePoint.x} 
-                            cy={lastActivePoint.y} 
-                            className="pulse-circle"
-                            // Note: animation handles radius, but we set a base here to be safe
-                            style={{ 
-                                animationDuration: '1.5s',
-                                vectorEffect: 'non-scaling-stroke'
-                            }}
-                        />
-                    )}
-
-                    {toolMode === ToolMode.SET_SCALE && (
-                    <g>
-                        {scalePoints.map((p, i) => (
-                        <circle 
-                            key={`scale-pt-${i}`} 
-                            cx={p.x} 
-                            cy={p.y} 
-                            r={54 / zoom} 
-                            fill="rgba(59, 130, 246, 1)" 
-                            stroke="white" 
-                            strokeWidth={2 / zoom}
-                            className={i === 0 && scalePoints.length === 1 ? 'blinking-dot' : ''}
-                        />
-                        ))}
-                        {suggestedScalePoints.map((p, i) => (
-                          <g key={`suggestion-${i}`}>
-                            <circle
-                              cx={p.x}
-                              cy={p.y}
-                              r={30 / zoom}
-                              fill="rgba(74, 222, 128, 0.3)" // green-400 with opacity
-                              style={{ pointerEvents: 'none' }}
-                            />
-                            <circle
-                              className="ripple-circle"
-                              cx={p.x}
-                              cy={p.y}
-                              r={30 / zoom}
-                              strokeWidth={3 / zoom}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </g>
-                        ))}
-                        {mousePos && scalePoints.length === 1 && (
-                        <line
-                            className="scaling-line-animated"
-                            x1={scalePoints[0].x}
-                            y1={scalePoints[0].y}
-                            x2={hoveredScaleVertexIndex !== null ? site.points[hoveredScaleVertexIndex].x : mousePos.x}
-                            y2={hoveredScaleVertexIndex !== null ? site.points[hoveredScaleVertexIndex].y : mousePos.y}
-                            stroke="rgba(59, 130, 246, 0.8)"
-                            strokeWidth={4 / zoom}
-                            strokeDasharray={`${10 / zoom} ${5 / zoom}`}
-                        />
-                        )}
-                        {scalePoints.length === 2 && (() => {
-                            const p1 = scalePoints[0];
-                            const p2 = scalePoints[1];
-                            const angleRad = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                            
-                            const arrowSize = 40 / zoom;
-                            const arrowAngle = Math.PI / 6;
-
-                            // Arrow at p1, pointing away from p2
-                            const p1_arrow_p2 = {
-                                x: p1.x - arrowSize * Math.cos(angleRad + arrowAngle),
-                                y: p1.y - arrowSize * Math.sin(angleRad + arrowAngle)
-                            };
-                            const p1_arrow_p3 = {
-                                x: p1.x - arrowSize * Math.cos(angleRad - arrowAngle),
-                                y: p1.y - arrowSize * Math.sin(angleRad - arrowAngle)
-                            };
-                            
-                            // Arrow at p2, pointing away from p1
-                            const p2_arrow_p2 = {
-                                x: p2.x + arrowSize * Math.cos(angleRad + arrowAngle),
-                                y: p2.y + arrowSize * Math.sin(angleRad + arrowAngle)
-                            };
-                            const p2_arrow_p3 = {
-                                x: p2.x + arrowSize * Math.cos(angleRad - arrowAngle),
-                                y: p2.y + arrowSize * Math.sin(angleRad - arrowAngle)
-                            };
-
-                            return (
-                                <g>
-                                    <line
-                                    x1={p1.x} y1={p1.y}
-                                    x2={p2.x} y2={p2.y}
-                                    stroke="#3B82F6"
-                                    strokeWidth={6 / zoom}
-                                    />
-                                    <polygon points={`${p1.x},${p1.y} ${p1_arrow_p2.x},${p1_arrow_p2.y} ${p1_arrow_p3.x},${p1_arrow_p3.y}`} fill="#3B82F6" />
-                                    <polygon points={`${p2.x},${p2.y} ${p2_arrow_p2.x},${p2_arrow_p2.y} ${p2_arrow_p3.x},${p2_arrow_p3.y}`} fill="#3B82F6" />
-                                </g>
-                            );
-                        })()}
-                        {hoveredScaleVertexIndex !== null && (
-                        <circle
-                            cx={site.points[hoveredScaleVertexIndex].x}
-                            cy={site.points[hoveredScaleVertexIndex].y}
-                            r={60 / zoom}
-                            fill="rgba(59, 130, 246, 0.5)"
-                            style={{ pointerEvents: 'none' }}
-                        />
-                        )}
-                    </g>
-                    )}
-
-                    {isCloseToStart && !isConfirming && (
-                    <circle
-                        cx={currentDrawingPoints[0].x}
-                        cy={currentDrawingPoints[0].y}
-                        // Make this close indicator visual radius larger on mobile
-                        r={(closeSnapDistance) / zoom}
-                        fill="rgba(249, 115, 22, 0.5)"
-                        stroke="#F97316"
-                        strokeWidth={2 / zoom}
-                        style={{ cursor: 'pointer' }}
-                    />
-                    )}
-
-                    {/* Snapping Indicators */}
-                    {snappedPoint && (
-                        <g style={{ pointerEvents: 'none' }}>
-                            <circle
-                                cx={snappedPoint.point.x}
-                                cy={snappedPoint.point.y}
-                                r={snappedPoint.type === 'vertex' ? (54 / zoom) : (18 / zoom)}
-                                fill={snappedPoint.type === 'vertex' ? "rgba(239, 68, 68, 0.4)" : "rgba(249, 115, 22, 0.4)"} // Red for vertex, Orange for edge
-                                stroke={snappedPoint.type === 'vertex' ? "#EF4444" : "#F97316"}
-                                strokeWidth={2 / zoom}
-                            />
-                            {snappedPoint.type === 'vertex' ? (
-                                <circle cx={snappedPoint.point.x} cy={snappedPoint.point.y} r={3 / zoom} fill="#EF4444" />
-                            ) : (
-                                <path 
-                                    d={`M ${snappedPoint.point.x - 4/zoom} ${snappedPoint.point.y - 4/zoom} L ${snappedPoint.point.x + 4/zoom} ${snappedPoint.point.y + 4/zoom} M ${snappedPoint.point.x - 4/zoom} ${snappedPoint.point.y + 4/zoom} L ${snappedPoint.point.x + 4/zoom} ${snappedPoint.point.y - 4/zoom}`} 
-                                    stroke="#F97316" 
-                                    strokeWidth={2 / zoom} 
-                                />
-                            )}
-                        </g>
-                    )}
-
-                    {toolMode === ToolMode.EDIT_SITE && site.points.map((p, i) => (
-                        <circle
-                            key={`handle-vertex-${i}`}
-                            cx={p.x}
-                            cy={p.y}
-                            r={(hoveredVertexIndex === i ? 40 : 36) / zoom}
-                            fill={hoveredVertexIndex === i ? 'rgba(234, 179, 8, 1)' : 'rgba(249, 115, 22, 0.8)'}
-                            stroke="white"
-                            strokeWidth={3 / zoom}
-                        />
-                    ))}
-
-                    {toolMode === ToolMode.EDIT_SITE && hoveredEdgeIndex !== null && hoveredVertexIndex === null && (() => {
-                        const p1 = site.points[hoveredEdgeIndex];
-                        const p2 = site.points[(hoveredEdgeIndex + 1) % site.points.length];
-                        const midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-                        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-
-                        return (
-                            <g>
-                                <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(234, 179, 8, 0.8)" strokeWidth={8 / zoom} strokeLinecap="round" />
-                                <g 
-                                    transform={`translate(${midPoint.x}, ${midPoint.y}) rotate(${angle + 90}) scale(${1 / zoom})`}
-                                    style={{ pointerEvents: 'none' }}
-                                >
-                                    <rect x="-30" y="-15" width="60" height="30" fill="rgba(255,255,255,0.7)" rx="5" />
-                                    <text
-                                        fontSize="32"
-                                        fill="#F97316"
-                                        textAnchor="middle"
-                                        dominantBaseline="central"
-                                        style={{ userSelect: 'none' }}
-                                    >
-                                        ↔
-                                    </text>
-                                </g>
-                            </g>
-                        );
-                    })()}
+                    {toolMode === ToolMode.ADD_ITEM && activeItemType && (ITEM_CATALOG[activeItemType].unit === 'item') && mousePos && (<circle cx={mousePos.x} cy={mousePos.y} r={54 / zoom} fill="rgba(239, 68, 68, 0.5)" />)}
+                    {tempPoints.map((p, i) => { const isPolygonItem = activeItemType && ITEM_CATALOG[activeItemType].unit === 'm²'; const isStartPoint = i === 0; const showBlink = toolMode === ToolMode.ADD_ITEM && !isConfirming && isPolygonItem && tempPoints.length >= 1 && isStartPoint; return (<circle key={`temp-${i}`} cx={p.x} cy={p.y} r={54 / zoom} fill="#EF4444" stroke="white" strokeWidth={3/zoom} className={showBlink ? 'blinking-dot' : ''} />); })}
+                    {isDrawingPolygon && lastActivePoint && !isConfirming && (<circle cx={lastActivePoint.x} cy={lastActivePoint.y} className="pulse-circle" style={{ animationDuration: '1.5s', vectorEffect: 'non-scaling-stroke' }} />)}
+                    {toolMode === ToolMode.SET_SCALE && (<g>{scalePoints.map((p, i) => (<circle key={`scale-pt-${i}`} cx={p.x} cy={p.y} r={54 / zoom} fill="rgba(59, 130, 246, 1)" stroke="white" strokeWidth={2 / zoom} className={i === 0 && scalePoints.length === 1 ? 'blinking-dot' : ''} />))}{suggestedScalePoints.map((p, i) => (<g key={`suggestion-${i}`}><circle cx={p.x} cy={p.y} r={30 / zoom} fill="rgba(74, 222, 128, 0.3)" style={{ pointerEvents: 'none' }} /><circle className="ripple-circle" cx={p.x} cy={p.y} r={30 / zoom} strokeWidth={3 / zoom} style={{ pointerEvents: 'none' }} /></g>))}{mousePos && scalePoints.length === 1 && (<line className="scaling-line-animated" x1={scalePoints[0].x} y1={scalePoints[0].y} x2={hoveredScaleVertexIndex !== null ? site.points[hoveredScaleVertexIndex].x : mousePos.x} y2={hoveredScaleVertexIndex !== null ? site.points[hoveredScaleVertexIndex].y : mousePos.y} stroke="rgba(59, 130, 246, 0.8)" strokeWidth={4 / zoom} strokeDasharray={`${10 / zoom} ${5 / zoom}`} />)}{scalePoints.length === 2 && (() => { const p1 = scalePoints[0]; const p2 = scalePoints[1]; const angleRad = Math.atan2(p2.y - p1.y, p2.x - p1.x); const arrowSize = 40 / zoom; const arrowAngle = Math.PI / 6; const p1_arrow_p2 = { x: p1.x - arrowSize * Math.cos(angleRad + arrowAngle), y: p1.y - arrowSize * Math.sin(angleRad + arrowAngle) }; const p1_arrow_p3 = { x: p1.x - arrowSize * Math.cos(angleRad - arrowAngle), y: p1.y - arrowSize * Math.sin(angleRad - arrowAngle) }; const p2_arrow_p2 = { x: p2.x + arrowSize * Math.cos(angleRad + arrowAngle), y: p2.y + arrowSize * Math.sin(angleRad + arrowAngle) }; const p2_arrow_p3 = { x: p2.x + arrowSize * Math.cos(angleRad - arrowAngle), y: p2.y + arrowSize * Math.sin(angleRad - arrowAngle) }; return (<g><line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#3B82F6" strokeWidth={6 / zoom} /><polygon points={`${p1.x},${p1.y} ${p1_arrow_p2.x},${p1_arrow_p2.y} ${p1_arrow_p3.x},${p1_arrow_p3.y}`} fill="#3B82F6" /><polygon points={`${p2.x},${p2.y} ${p2_arrow_p2.x},${p2_arrow_p2.y} ${p2_arrow_p3.x},${p2_arrow_p3.y}`} fill="#3B82F6" /></g>); })()}{hoveredScaleVertexIndex !== null && (<circle cx={site.points[hoveredScaleVertexIndex].x} cy={site.points[hoveredScaleVertexIndex].y} r={60 / zoom} fill="rgba(59, 130, 246, 0.5)" style={{ pointerEvents: 'none' }} />)}</g>)}
+                    {isCloseToStart && !isConfirming && (<circle cx={currentDrawingPoints[0].x} cy={currentDrawingPoints[0].y} r={(closeSnapDistance) / zoom} fill="rgba(249, 115, 22, 0.5)" stroke="#F97316" strokeWidth={2 / zoom} style={{ cursor: 'pointer' }} />)}
+                    {snappedPoint && (<g style={{ pointerEvents: 'none' }}><circle cx={snappedPoint.point.x} cy={snappedPoint.point.y} r={snappedPoint.type === 'vertex' ? (54 / zoom) : (18 / zoom)} fill={snappedPoint.type === 'vertex' ? "rgba(239, 68, 68, 0.4)" : "rgba(249, 115, 22, 0.4)"} stroke={snappedPoint.type === 'vertex' ? "#EF4444" : "#F97316"} strokeWidth={2 / zoom} />{snappedPoint.type === 'vertex' ? (<circle cx={snappedPoint.point.x} cy={snappedPoint.point.y} r={3 / zoom} fill="#EF4444" />) : (<path d={`M ${snappedPoint.point.x - 4/zoom} ${snappedPoint.point.y - 4/zoom} L ${snappedPoint.point.x + 4/zoom} ${snappedPoint.point.y + 4/zoom} M ${snappedPoint.point.x - 4/zoom} ${snappedPoint.point.y + 4/zoom} L ${snappedPoint.point.x + 4/zoom} ${snappedPoint.point.y - 4/zoom}`} stroke="#F97316" strokeWidth={2 / zoom} />)}</g>)}
+                    {toolMode === ToolMode.EDIT_SITE && site.points.map((p, i) => (<circle key={`handle-vertex-${i}`} cx={p.x} cy={p.y} r={(hoveredVertexIndex === i ? 40 : 36) / zoom} fill={hoveredVertexIndex === i ? 'rgba(234, 179, 8, 1)' : 'rgba(249, 115, 22, 0.8)'} stroke="white" strokeWidth={3 / zoom} />))}
+                    {toolMode === ToolMode.EDIT_SITE && hoveredEdgeIndex !== null && hoveredVertexIndex === null && (() => { const p1 = site.points[hoveredEdgeIndex]; const p2 = site.points[(hoveredEdgeIndex + 1) % site.points.length]; const midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }; const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI; return (<g><line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(234, 179, 8, 0.8)" strokeWidth={8 / zoom} strokeLinecap="round" /><g transform={`translate(${midPoint.x}, ${midPoint.y}) rotate(${angle + 90}) scale(${1 / zoom})`} style={{ pointerEvents: 'none' }}><rect x="-30" y="-15" width="60" height="30" fill="rgba(255,255,255,0.7)" rx="5" /><text fontSize="32" fill="#F97316" textAnchor="middle" dominantBaseline="central" style={{ userSelect: 'none' }}>↔</text></g></g>); })()}
                 </g>
             </g>
         </svg>
