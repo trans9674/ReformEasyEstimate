@@ -907,7 +907,7 @@ const App: React.FC = () => {
     });
   }, [items, scale]);
 
-  const totalCost = useMemo(() => quote.reduce((sum, item) => sum + item.total, 0), [quote]);
+  const totalCost = useMemo(() => Math.round(quote.reduce((sum, item) => sum + item.total, 0)), [quote]);
   const isImageLoaded = !!backgroundImage;
   const isSetupComplete = !!(isImageLoaded && rotationAdjusted && isSiteFinalized && scale);
 
@@ -1045,7 +1045,6 @@ const App: React.FC = () => {
               scale={scale}
               pendingConfirmation={pendingConfirmation}
               onCancelConfirmation={handlePendingCancel}
-              showGuideRectangle={isImageLoaded && !rotationAdjusted}
               currentSetupStep={currentSetupStep}
             />
           ) : (

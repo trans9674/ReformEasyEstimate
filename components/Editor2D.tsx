@@ -36,7 +36,6 @@ interface Editor2DProps {
   scale: number | null;
   pendingConfirmation: { type: 'site' | 'item', points: Point[] } | null;
   onCancelConfirmation: () => void;
-  showGuideRectangle?: boolean;
   currentSetupStep: number;
 }
 
@@ -101,7 +100,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   scale,
   pendingConfirmation,
   onCancelConfirmation,
-  showGuideRectangle = false,
   currentSetupStep,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -863,7 +861,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
                 <g ref={contentGroupRef} transform={`rotate(${rotation} ${center.x} ${center.y})`}>
                     {imageSize && (<rect x={center.x - gridCoverageSize / 2} y={center.y - gridCoverageSize / 2} width={gridCoverageSize} height={gridCoverageSize} fill="url(#majorGrid)" />)}
                     {backgroundImage && <image href={backgroundImage} x="0" y="0" width="100%" height="100%" />}
-                    {showGuideRectangle && imageSize && (<rect x={imageSize.width * 0.1} y={imageSize.height * 0.1} width={imageSize.width * 0.8} height={imageSize.height * 0.8} fill="none" stroke="rgba(59, 130, 246, 0.9)" strokeWidth={2 / zoom} strokeDasharray={`${8 / zoom} ${4 / zoom}`} rx={10 / zoom} style={{ pointerEvents: 'none' }} />)}
                     {drawings.map(renderDrawingElement)}
                     {items.map(renderItem)}
                     {pendingConfirmation?.type === 'item' && (<polygon points={pendingConfirmation.points.map(p => `${p.x},${p.y}`).join(' ')} fill="rgba(239, 68, 68, 0.3)" stroke="#EF4444" strokeWidth={3 / zoom} strokeDasharray={`${6 / zoom}`} />)}

@@ -24,10 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-white shadow-md flex items-center z-10 shrink-0 h-14">
-      <div className="flex items-center gap-2 px-4 py-1 w-full">
-        <h1 className="text-lg font-bold text-indigo-600 mr-4 shrink-0 hidden md:block">リフォーム・間取り見積もり</h1>
-        
-        <div className="flex-grow min-w-[10px]"></div>
+      <div className="flex items-center gap-4 px-4 py-1 w-full">
+        <h1 className="text-lg font-bold text-indigo-600 shrink-0 hidden md:block">リフォーム・間取り見積もり</h1>
         
         <div className="flex bg-gray-100 rounded-md p-1 shrink-0">
             <button
@@ -46,8 +44,10 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
         </div>
 
+        <div className="flex-grow min-w-[10px]"></div>
+
         {isSetupComplete && (
-          <div className="text-right ml-4 shrink-0">
+          <div className="text-right shrink-0">
             <p className="text-xs text-gray-500 whitespace-nowrap">概算お見積り</p>
             <p className="text-xl font-bold text-gray-800 whitespace-nowrap">
               {totalCost.toLocaleString('ja-JP')}円
