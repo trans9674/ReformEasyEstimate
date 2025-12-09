@@ -9,12 +9,12 @@ import { ConfirmationModal as ConfirmationControls } from './components/Confirma
 import { ScaleModal as ScaleControl } from './components/ScaleModal';
 import { RotationModal } from './components/RotationModal';
 import { Header } from './components/Header';
-import { InstructionalPanel } from './components/InstructionalPanel';
 import { ItemActionModal } from './components/ItemActionModal';
 import { NumericMoveModal } from './components/NumericMoveModal';
 import { FlipModal } from './components/FlipModal';
 import { ImageAdjuster } from './components/ImageAdjuster';
 import { CameraIcon } from './components/Icons';
+import { SetupStepper } from './components/SetupStepper';
 import polygonClipping from 'polygon-clipping';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -751,7 +751,7 @@ const App: React.FC = () => {
     setTempPoints([]);
   };
 
-  const handleNewFile = () => {
+  const handleNewFile = useCallback(() => {
     setBackgroundImage(null);
     setImageSize(null);
     setSite({ points: [], boundaryTypes: [], vertexHeights: [] });
@@ -770,7 +770,7 @@ const App: React.FC = () => {
     setHistory([]);
     setHistoryIndex(-1);
     setSelectedItemId(null);
-  };
+  }, []);
   
   const handlePendingConfirm = () => {
     if (!pendingConfirmation) return;
@@ -911,6 +911,41 @@ const App: React.FC = () => {
   const isImageLoaded = !!backgroundImage;
   const isSetupComplete = !!(isImageLoaded && rotationAdjusted && isSiteFinalized && scale);
 
+  const currentSetupStep = useMemo(() => {
+    if (!isImageLoaded) return 1;
+    if (!rotationAdjusted) return 2;
+    if (!isSiteFinalized) return 3;
+    if (!scale) return 4;
+    return 5; // setup is complete
+  }, [isImageLoaded, rotationAdjusted, isSiteFinalized, scale]);
+
+  const handleGoToStep = useCallback((step: number) => {
+    if (step >= currentSetupStep) return;
+
+    if (window.confirm('前のステップに戻りますか？現在のステップ以降の作業内容はリセットされます。')) {
+        switch (step) {
+            case 1:
+                handleNewFile();
+                break;
+            case 2:
+                setRotationAdjusted(false);
+                setIsSiteFinalized(false);
+                setSite({ points: [], boundaryTypes: [], vertexHeights: [] });
+                setScale(null);
+                setScalePoints([]);
+                setToolMode(ToolMode.SELECT);
+                commitState({ points: [], boundaryTypes: [], vertexHeights: [] }, items, null, drawings);
+                break;
+            case 3:
+                setIsSiteFinalized(false);
+                setScale(null);
+                setScalePoints([]);
+                setToolMode(ToolMode.DRAW_SITE);
+                break;
+        }
+    }
+  }, [currentSetupStep, handleNewFile, items, drawings, commitState]);
+
   const UploadScreen = () => (
     <div className="absolute inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center">
       <div className="w-full max-w-sm">
@@ -965,30 +1000,18 @@ const App: React.FC = () => {
         <main className={`flex-1 relative bg-white md:mb-0 ${isSetupComplete ? 'mb-[190px]' : ''}`}>
           {!isImageLoaded && <UploadScreen />}
 
+          {isImageLoaded && !isSetupComplete && (
+            <SetupStepper currentStep={currentSetupStep} onStepClick={handleGoToStep} />
+          )}
+
           {isImageLoaded && !rotationAdjusted && (
             <ImageAdjuster
               onCancel={handleNewFile}
               onRotate90={handleRotate90}
               onConfirm={handleRotationConfirm}
-              title="STEP1"
-              message="間取りの配置を調整"
             />
           )}
-
-          {isImageLoaded && rotationAdjusted && !isSiteFinalized && (
-            <InstructionalPanel
-              key="step2-instruction-site"
-              title="Step2 外周の登録"
-              message="間取り図の部屋の輪郭をなぞるようにクリックして、外周を作成してください。最後に開始点をクリックすると形状が確定します。"
-            />
-          )}
-          {isImageLoaded && rotationAdjusted && isSiteFinalized && !scale && !isSettingScale && (
-            <InstructionalPanel
-              key="step3-instruction-scale"
-              title="Step3 長さの設定"
-              message="図面の2点をクリックして実際の長さを入力してください。"
-            />
-          )}
+          
           {viewMode === ViewMode.TWO_D ? (
             <Editor2D
               backgroundImage={backgroundImage}

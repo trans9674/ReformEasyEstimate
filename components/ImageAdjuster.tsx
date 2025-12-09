@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -26,41 +25,35 @@ interface ImageAdjusterProps {
   onCancel: () => void;
   onRotate90: () => void;
   onConfirm: () => void;
-  title: string;
-  message: string;
 }
 
-export const ImageAdjuster: React.FC<ImageAdjusterProps> = ({ onCancel, onRotate90, onConfirm, title, message }) => {
+export const ImageAdjuster: React.FC<ImageAdjusterProps> = ({ onCancel, onRotate90, onConfirm }) => {
   return (
     <div className="absolute inset-0 z-30 pointer-events-none">
-      <div className="absolute top-5 left-5 flex flex-col gap-2 pointer-events-auto">
+      <div className="absolute top-5 left-5 flex flex-row gap-2 pointer-events-auto">
         <button 
           onClick={onCancel} 
-          className="bg-gray-800 bg-opacity-70 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-opacity-90 transition-all"
+          className="bg-gray-800 bg-opacity-70 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-lg hover:bg-opacity-90 transition-all"
           aria-label="再撮影"
         >
-          <CloseIcon className="w-6 h-6" />
+          <CloseIcon className="w-5 h-5" />
         </button>
         <button 
           onClick={onRotate90} 
-          className="bg-gray-800 bg-opacity-70 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-opacity-90 transition-all"
+          className="bg-gray-800 bg-opacity-70 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-lg hover:bg-opacity-90 transition-all"
           aria-label="90度回転"
         >
-          <Rotate90Icon className="w-6 h-6" />
+          <Rotate90Icon className="w-5 h-5" />
         </button>
       </div>
       <div className="absolute top-5 right-5 pointer-events-auto">
         <button 
           onClick={onConfirm} 
-          className="bg-yellow-400 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-yellow-500 transition-colors"
+          className="bg-yellow-400 rounded-full w-9 h-9 flex items-center justify-center shadow-lg hover:bg-yellow-500 transition-colors"
           aria-label="決定"
         >
-          <CheckIcon className="w-7 h-7 text-gray-800" />
+          <CheckIcon className="w-5 h-5 text-gray-800" />
         </button>
-      </div>
-       <div className="absolute bottom-4 left-4 right-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg text-center pointer-events-auto border border-gray-200">
-        <h3 className="text-xs font-bold text-gray-500 tracking-widest">{title}</h3>
-        <p className="text-lg font-semibold text-gray-800 mt-1">{message}</p>
       </div>
     </div>
   );
