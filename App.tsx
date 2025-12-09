@@ -1,4 +1,3 @@
-
 // FIX: Removed extraneous file content that was concatenated to this file, causing compilation errors.
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Editor2D } from './components/Editor2D';
@@ -1039,6 +1038,7 @@ const App: React.FC = () => {
               scale={scale}
               pendingConfirmation={pendingConfirmation}
               onCancelConfirmation={handlePendingCancel}
+              showGuideRectangle={isImageLoaded && !rotationAdjusted}
             />
           ) : (
             <Editor3D 

@@ -37,6 +37,7 @@ interface Editor2DProps {
   scale: number | null;
   pendingConfirmation: { type: 'site' | 'item', points: Point[] } | null;
   onCancelConfirmation: () => void;
+  showGuideRectangle?: boolean;
 }
 
 const getDistance = (p1: Point, p2: Point) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
@@ -100,6 +101,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   scale,
   pendingConfirmation,
   onCancelConfirmation,
+  showGuideRectangle = false,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const contentGroupRef = useRef<SVGGElement>(null);
@@ -867,6 +869,21 @@ export const Editor2D: React.FC<Editor2DProps> = ({
 
                     {backgroundImage && <image href={backgroundImage} x="0" y="0" width="100%" height="100%" />}
                     
+                    {showGuideRectangle && imageSize && (
+                      <rect
+                        x={imageSize.width * 0.1}
+                        y={imageSize.height * 0.1}
+                        width={imageSize.width * 0.8}
+                        height={imageSize.height * 0.8}
+                        fill="none"
+                        stroke="rgba(59, 130, 246, 0.9)"
+                        strokeWidth={2 / zoom}
+                        strokeDasharray={`${8 / zoom} ${4 / zoom}`}
+                        rx={10 / zoom}
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    )}
+
                     {drawings.map(renderDrawingElement)}
 
                     {items.map(renderItem)}
