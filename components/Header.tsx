@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewMode } from '../types';
-import { CameraIcon, CubeIcon } from './Icons';
+import { CameraIcon, CubeIcon, CheckIcon } from './Icons';
 
 interface HeaderProps {
   viewMode: ViewMode;
@@ -10,6 +10,8 @@ interface HeaderProps {
   scale: number | null;
   totalCost: number;
   isSetupComplete: boolean;
+  currentSetupStep: number;
+  onConfirmAdjustment: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,12 +22,14 @@ export const Header: React.FC<HeaderProps> = ({
   scale,
   totalCost,
   isSetupComplete,
+  currentSetupStep,
+  onConfirmAdjustment,
 }) => {
 
   return (
-    <header className="bg-white shadow-md flex items-center z-10 shrink-0 h-14">
-      <div className="flex items-center gap-4 px-4 py-1 w-full">
-        <h1 className="text-lg font-bold text-indigo-600 shrink-0 hidden md:block">リフォーム・間取り見積もり</h1>
+    <header className="bg-white shadow-md flex items-center justify-between z-20 shrink-0 h-14 px-4 py-1">
+      <div className="flex items-center gap-4">
+        <h1 className="text-lg font-bold text-indigo-600 shrink-0 hidden md:block">外構・エクステリア見積もり</h1>
         
         <div className="flex bg-gray-100 rounded-md p-1 shrink-0">
             <button
@@ -43,9 +47,9 @@ export const Header: React.FC<HeaderProps> = ({
                 <CubeIcon className="w-5 h-5" /> 3D
             </button>
         </div>
+      </div>
 
-        <div className="flex-grow min-w-[10px]"></div>
-
+      <div className="flex items-center gap-4">
         {isSetupComplete && (
           <div className="text-right shrink-0">
             <p className="text-xs text-gray-500 whitespace-nowrap">概算お見積り</p>
@@ -55,6 +59,16 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
+        {currentSetupStep === 2 && (
+          <button
+            onClick={onConfirmAdjustment}
+            className="bg-yellow-400 rounded-md px-4 py-2 flex items-center justify-center shadow-lg hover:bg-yellow-500 transition-colors text-gray-800 font-bold"
+            aria-label="決定"
+          >
+            <CheckIcon className="w-5 h-5 mr-1" />
+            決定
+          </button>
+        )}
       </div>
     </header>
   );

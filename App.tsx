@@ -13,7 +13,7 @@ import { ItemActionModal } from './components/ItemActionModal';
 import { NumericMoveModal } from './components/NumericMoveModal';
 import { FlipModal } from './components/FlipModal';
 import { ImageAdjuster } from './components/ImageAdjuster';
-import { CameraIcon } from './components/Icons';
+import { CameraIcon, RotateIcon, EditIcon, UndoIcon } from './components/Icons';
 import { SetupStepper } from './components/SetupStepper';
 import polygonClipping from 'polygon-clipping';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -115,6 +115,38 @@ type ConfirmationState = {
     intersectedItemIds: string[];
 };
 
+const ImageActionModal: React.FC<{
+  onRotate90: () => void;
+  onSpecifyAngle: () => void;
+  onGoBack: () => void;
+  onCancel: () => void;
+}> = ({ onRotate90, onSpecifyAngle, onGoBack, onCancel }) => {
+  return (
+    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-white p-6 rounded-lg shadow-xl text-center max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold mb-4 text-gray-800">配置調整</h3>
+        <div className="flex flex-col gap-2">
+          <button onClick={onRotate90} className="flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors text-gray-700 text-left">
+            <RotateIcon className="w-5 h-5 text-blue-500" />
+            <span className="font-medium">90度回転</span>
+          </button>
+          <button onClick={onSpecifyAngle} className="flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors text-gray-700 text-left">
+            <EditIcon className="w-5 h-5 text-green-500" />
+            <span className="font-medium">角度を指定して回転</span>
+          </button>
+          <button onClick={onGoBack} className="flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors text-gray-700 text-left">
+            <UndoIcon className="w-5 h-5 text-orange-500" />
+            <span className="font-medium">前のステップに戻る</span>
+          </button>
+        </div>
+        <button onClick={onCancel} className="mt-4 w-full px-4 py-2 text-gray-500 hover:text-gray-700 text-sm">
+          閉じる
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.TWO_D);
@@ -138,6 +170,7 @@ const App: React.FC = () => {
   const [isSettingScale, setIsSettingScale] = useState(false);
   const [scaleInputValue, setScaleInputValue] = useState('');
   const [isRotationModalOpen, setIsRotationModalOpen] = useState(false);
+  const [isImageActionModalOpen, setIsImageActionModalOpen] = useState(false);
   
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isItemActionModalOpen, setIsItemActionModalOpen] = useState(false);
@@ -361,51 +394,30 @@ const App: React.FC = () => {
 
             if (currentPoints.length > 0) {
                 const lastPoint = currentPoints[currentPoints.length - 1];
-
-                const dx = finalPoint.x - lastPoint.x;
-                const dy = finalPoint.y - lastPoint.y;
-                const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-                const snapThreshold = 20;
-
-                const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
-                const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
-                
                 const allPointsForSnap = [...site.points];
-                const snapXCoords = allPointsForSnap.map(p => p.x);
-                const snapYCoords = allPointsForSnap.map(p => p.y);
-                
-                if (isHorizontalIntent) {
-                    finalPoint.y = lastPoint.y; // Maintain right angle (horizontal)
-                    let closestX = finalPoint.x;
-                    let minDx = snapDistanceSVG;
-                    for (const x of snapXCoords) {
-                        const dist = Math.abs(finalPoint.x - x);
-                        if (dist < minDx) {
-                            minDx = dist;
-                            closestX = x;
-                        }
-                    }
-                    finalPoint.x = closestX;
-                } else if (isVerticalIntent) {
-                    finalPoint.x = lastPoint.x; // Maintain right angle (vertical)
-                    let closestY = finalPoint.y;
-                    let minDy = snapDistanceSVG;
-                    for (const y of snapYCoords) {
-                        const dist = Math.abs(finalPoint.y - y);
-                        if (dist < minDy) {
-                            minDy = dist;
-                            closestY = y;
-                        }
-                    }
-                    finalPoint.y = closestY;
-                } else {
-                    // Fallback to simple axis snap
+        
+                const dx = Math.abs(finalPoint.x - lastPoint.x);
+                const dy = Math.abs(finalPoint.y - lastPoint.y);
+        
+                // Force orthogonal lines.
+                if (dx > dy) {
+                    // Horizontal movement is dominant
+                    finalPoint.y = lastPoint.y;
+                    // Snap to X-coordinates of other points
                     for (const p of allPointsForSnap) {
                         if (Math.abs(finalPoint.x - p.x) < snapDistanceSVG) {
                             finalPoint.x = p.x;
+                            break;
                         }
+                    }
+                } else {
+                    // Vertical movement is dominant
+                    finalPoint.x = lastPoint.x;
+                    // Snap to Y-coordinates of other points
+                    for (const p of allPointsForSnap) {
                         if (Math.abs(finalPoint.y - p.y) < snapDistanceSVG) {
                             finalPoint.y = p.y;
+                            break;
                         }
                     }
                 }
@@ -469,89 +481,10 @@ const App: React.FC = () => {
         
         if (isPolygon) {
             const currentPoints = tempPoints;
-
-            if (
-                (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
-                currentPoints.length > 0
-            ) {
-                const lastPoint = currentPoints[currentPoints.length - 1];
-
-                const dx = finalPoint.x - lastPoint.x;
-                const dy = finalPoint.y - lastPoint.y;
-                const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-                const snapThreshold = 20;
-
-                const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
-                const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
-
-                const allPointsForSnap = [...currentPoints, ...site.points];
-                const snapXCoords = allPointsForSnap.map(p => p.x);
-                const snapYCoords = allPointsForSnap.map(p => p.y);
-
-                if (isHorizontalIntent) {
-                    finalPoint.y = lastPoint.y; // Maintain right angle (horizontal)
-                    let closestX = finalPoint.x;
-                    let minDx = snapDistanceSVG;
-                    for (const x of snapXCoords) {
-                        const dist = Math.abs(finalPoint.x - x);
-                        if (dist < minDx) {
-                            minDx = dist;
-                            closestX = x;
-                        }
-                    }
-                    finalPoint.x = closestX;
-                } else if (isVerticalIntent) {
-                    finalPoint.x = lastPoint.x; // Maintain right angle (vertical)
-                    let closestY = finalPoint.y;
-                    let minDy = snapDistanceSVG;
-                    for (const y of snapYCoords) {
-                        const dist = Math.abs(finalPoint.y - y);
-                        if (dist < minDy) {
-                            minDy = dist;
-                            closestY = y;
-                        }
-                    }
-                    finalPoint.y = closestY;
-                }
-            }
-            
             const closeSnapDistance = (snapDistancePixels * 4.0) / zoom;
 
             if (currentPoints.length >= 2 && getDistance(finalPoint, currentPoints[0]) < closeSnapDistance) {
                 let pointsToConfirm = [...currentPoints];
-
-                if ((activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) && site.points.length >= 3) {
-                    try {
-                        const siteRing = site.points.map(p => [p.x, p.y] as [number, number]);
-                        if (siteRing[0][0] !== siteRing[siteRing.length-1][0] || siteRing[0][1] !== siteRing[siteRing.length-1][1]) {
-                            siteRing.push([siteRing[0][0], siteRing[0][1]]);
-                        }
-
-                        const slabRing = currentPoints.map(p => [p.x, p.y] as [number, number]);
-                        if (slabRing[0][0] !== slabRing[slabRing.length-1][0] || slabRing[0][1] !== slabRing[slabRing.length-1][1]) {
-                             slabRing.push([slabRing[0][0], slabRing[0][1]]);
-                        }
-
-                        const intersected = polygonClipping.intersection([slabRing], [siteRing]);
-
-                        if (intersected.length > 0 && intersected[0].length > 0) {
-                            const resultRing = intersected[0][0];
-                            pointsToConfirm = resultRing.map(p => ({ x: p[0], y: p[1] }));
-                            if (pointsToConfirm.length > 1) {
-                                const first = pointsToConfirm[0];
-                                const last = pointsToConfirm[pointsToConfirm.length - 1];
-                                if (Math.abs(first.x - last.x) < 1e-9 && Math.abs(first.y - last.y) < 1e-9) {
-                                    pointsToConfirm.pop();
-                                }
-                            }
-                            if (isClockwise(pointsToConfirm)) {
-                                pointsToConfirm.reverse();
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Clipping failed:", e);
-                    }
-                }
 
                 setPendingConfirmation({ type: 'item', points: pointsToConfirm, itemType: activeItemType });
             } else {
@@ -778,7 +711,7 @@ const App: React.FC = () => {
     if (pendingConfirmation.type === 'site') {
         const newSite = { 
             points: pendingConfirmation.points,
-            boundaryTypes: Array(pendingConfirmation.points.length).fill('外壁') as BoundaryType[],
+            boundaryTypes: Array(pendingConfirmation.points.length).fill('隣地境界線') as BoundaryType[],
             vertexHeights: Array(pendingConfirmation.points.length).fill(0)
         };
         setSite(newSite);
@@ -949,9 +882,9 @@ const App: React.FC = () => {
   const UploadScreen = () => (
     <div className="absolute inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center">
       <div className="w-full max-w-sm">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">間取り図を撮影・読込み</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">敷地図を撮影・読込み</h2>
         <p className="text-gray-600 mb-6 bg-blue-50 p-4 rounded-lg">
-          リフォームしたい部屋の間取り図を<br/><strong>真上から</strong>撮影またはファイルを読込んでください。
+          敷地の図面を<br/><strong>真上から</strong>撮影またはファイルを読込んでください。
         </p>
         <label 
           htmlFor="file-upload-camera"
@@ -995,6 +928,8 @@ const App: React.FC = () => {
         scale={scale}
         totalCost={totalCost}
         isSetupComplete={isSetupComplete}
+        currentSetupStep={currentSetupStep}
+        onConfirmAdjustment={handleRotationConfirm}
       />
       <div className="flex flex-1 overflow-hidden relative">
         <main className={`flex-1 relative bg-white md:mb-0 ${isSetupComplete ? 'mb-[190px]' : ''}`}>
@@ -1005,11 +940,17 @@ const App: React.FC = () => {
           )}
 
           {isImageLoaded && !rotationAdjusted && (
-            <ImageAdjuster
-              onCancel={handleNewFile}
-              onRotate90={handleRotate90}
-              onConfirm={handleRotationConfirm}
-            />
+            <>
+              <ImageAdjuster onOpenModal={() => setIsImageActionModalOpen(true)} />
+              {isImageActionModalOpen && (
+                <ImageActionModal
+                  onRotate90={() => { handleRotate90(); setIsImageActionModalOpen(false); }}
+                  onSpecifyAngle={() => { setIsImageActionModalOpen(false); setIsRotationModalOpen(true); }}
+                  onGoBack={() => { handleNewFile(); setIsImageActionModalOpen(false); }}
+                  onCancel={() => setIsImageActionModalOpen(false)}
+                />
+              )}
+            </>
           )}
           
           {viewMode === ViewMode.TWO_D ? (

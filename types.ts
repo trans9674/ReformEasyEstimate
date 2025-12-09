@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export interface Point {
@@ -6,35 +5,31 @@ export interface Point {
   y: number;
 }
 
-// Simplified boundary for interior (optional use)
-export type BoundaryType = '外壁' | '開口部';
+export type BoundaryType = '隣地境界線' | '道路境界線';
 
 export interface Site {
   points: Point[];
-  boundaryTypes: BoundaryType[]; // Can be used for wall types if needed
-  vertexHeights?: number[]; // Not strictly needed for flat floor plans but kept for compatibility
+  boundaryTypes: BoundaryType[];
+  vertexHeights?: number[];
 }
 
 export enum ItemType {
-  FLOORING = 'FLOORING',      // ポリゴン: フローリング
-  TATAMI = 'TATAMI',          // ポリゴン: 畳
-  WALL_CROSS = 'WALL_CROSS',  // ライン: 壁（クロス張り替え）
-  KITCHEN = 'KITCHEN',        // ポイント: キッチン
-  TOILET = 'TOILET',          // ポイント: トイレ
-  BATH = 'BATH',              // ポイント: ユニットバス
-  WASHBASIN = 'WASHBASIN',    // ポイント: 洗面台
-  DOOR = 'DOOR',              // ライン/ポイント: ドア
-  // FIX: Add WINDOW and CLOSET to resolve errors in Editor2D.tsx
-  WINDOW = 'WINDOW',          // ライン: 窓
-  CLOSET = 'CLOSET',          // ポリゴン: クローゼット
+  FENCE = 'FENCE',          // ライン: フェンス
+  GATE = 'GATE',            // ライン: 門扉
+  CARPORT = 'CARPORT',      // ポリゴン: カーポート
+  PARKING = 'PARKING',      // ポリゴン: 駐車場土間
+  DECK = 'DECK',            // ポリゴン: ウッドデッキ
+  BLOCK = 'BLOCK',          // ライン: ブロック塀
+  PLANTING = 'PLANTING',    // ポイント: 植栽
+  RETAINING_WALL = 'RETAINING_WALL', // ライン: 擁壁
 }
 
 export interface ExteriorItem {
   id: string;
   type: ItemType;
   points: Point[];
-  height?: number; // 家具や壁の高さなど
-  rotation?: number; // ポイントアイテムの回転
+  height?: number; 
+  rotation?: number;
 }
 
 export enum ViewMode {
