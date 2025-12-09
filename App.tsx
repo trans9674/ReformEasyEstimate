@@ -152,7 +152,6 @@ const App: React.FC = () => {
   const [rotation, setRotation] = useState(0); // degrees
   const [rotationAdjusted, setRotationAdjusted] = useState(false);
   const [isSiteFinalized, setIsSiteFinalized] = useState(false);
-  const [isSnappingToSite, setIsSnappingToSite] = useState(false);
 
 
   const commitState = useCallback((newSite: Site, newItems: ExteriorItem[], newScale: number | null, newDrawings: DrawingElement[]) => {
@@ -218,7 +217,6 @@ const App: React.FC = () => {
           setIsSiteFinalized(false);
           setHistory([]);
           setHistoryIndex(-1);
-          setIsSnappingToSite(false);
           setToolMode(ToolMode.SELECT);
           setSelectedItemId(null);
         };
@@ -860,16 +858,6 @@ const App: React.FC = () => {
     setPan(prevPan => ({ x: prevPan.x + dx, y: prevPan.y + dy }));
   };
 
-  const handleSnapToSiteDown = useCallback(() => {
-    if (toolMode === ToolMode.ADD_ITEM) {
-        setIsSnappingToSite(true);
-    }
-  }, [toolMode]);
-
-  const handleSnapToSiteUp = useCallback(() => {
-      setIsSnappingToSite(false);
-  }, []);
-
   const handleItemUpdate = useCallback((itemId: string, updates: Partial<ExteriorItem>) => {
     const newItems = items.map(item => item.id === itemId ? { ...item, ...updates } : item);
     setItems(newItems);
@@ -970,9 +958,6 @@ const App: React.FC = () => {
         isImageLoaded={isImageLoaded}
         isSiteDefined={isSiteDefined}
         scale={scale}
-        isSnappingToSite={isSnappingToSite}
-        onSnapToSiteDown={handleSnapToSiteDown}
-        onSnapToSiteUp={handleSnapToSiteUp}
         totalCost={totalCost}
         isSetupComplete={isSetupComplete}
       />
@@ -1026,7 +1011,6 @@ const App: React.FC = () => {
               onZoom={handleZoom}
               pan={pan}
               onPan={handlePan}
-              isSnappingToSite={isSnappingToSite}
               rotation={rotation}
               onRotate={setRotation}
               currentLineStyle={currentLineStyle}

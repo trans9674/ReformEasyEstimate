@@ -25,7 +25,6 @@ interface Editor2DProps {
   onZoom: (factor: number) => void;
   pan: Point;
   onPan: (dx: number, dy: number) => void;
-  isSnappingToSite: boolean;
   rotation: number;
   onRotate: (newAngle: number) => void;
   currentLineStyle: LineStyle;
@@ -264,15 +263,15 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       const gesture = gestureStateRef.current;
 
       // Pan
-      const panDx = center.x - gesture.panStart.x;
-      const panDy = center.y - gesture.panStart.y;
+      const panDx = (center.x - gesture.panStart.x) * 1.2;
+      const panDy = (center.y - gesture.panStart.y) * 1.2;
       onPan(panDx, panDy);
       gesture.panStart = center;
       
       // Zoom
       if (gesture.currentDistance > 0) {
         const zoomFactor = distance / gesture.currentDistance;
-        const moderatedZoomFactor = 1 + (zoomFactor - 1) * 0.5;
+        const moderatedZoomFactor = 1 + (zoomFactor - 1) * 0.15;
         applyZoom(moderatedZoomFactor, center);
       }
       gesture.currentDistance = distance;
@@ -280,8 +279,8 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     }
     
     if (isPanning && panStartPointRef.current) {
-        const dx = e.clientX - panStartPointRef.current.x;
-        const dy = e.clientY - panStartPointRef.current.y;
+        const dx = (e.clientX - panStartPointRef.current.x) * 1.2;
+        const dy = (e.clientY - panStartPointRef.current.y) * 1.2;
         panStartPointRef.current = { x: e.clientX, y: e.clientY };
         onPan(dx, dy);
         return;
