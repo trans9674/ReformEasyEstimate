@@ -65,8 +65,8 @@ function getClosestPointOnSegment(p: Point, a: Point, b: Point): Point {
     };
 }
 
-const MINOR_GRID_SPACING = 20;
-const MAJOR_GRID_SPACING = 100;
+const MINOR_GRID_SPACING = 80;
+const MAJOR_GRID_SPACING = 400;
 
 
 export const Editor2D: React.FC<Editor2DProps> = ({
@@ -272,7 +272,8 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       // Zoom
       if (gesture.currentDistance > 0) {
         const zoomFactor = distance / gesture.currentDistance;
-        applyZoom(zoomFactor, center);
+        const moderatedZoomFactor = 1 + (zoomFactor - 1) * 0.5;
+        applyZoom(moderatedZoomFactor, center);
       }
       gesture.currentDistance = distance;
       return;
