@@ -566,7 +566,12 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       return snappedPoint.point;
     }
     
-    if (toolMode === ToolMode.DRAW_SITE && lastActivePoint) {
+    const isOrthogonalSnappingActive = (toolMode === ToolMode.DRAW_SITE && lastActivePoint) || 
+                                     (toolMode === ToolMode.ADD_ITEM &&
+                                      (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
+                                      lastActivePoint);
+
+    if (isOrthogonalSnappingActive) {
         let finalPoint = { ...mousePos };
         const snapDistanceSVG = snapDistancePixels / zoom;
         const lastPoint = lastActivePoint!; 
@@ -579,7 +584,9 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
         const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
         
-        const pointsForSnapping = site.points;
+        const pointsForSnapping = toolMode === ToolMode.DRAW_SITE 
+            ? site.points 
+            : [...currentDrawingPoints, ...site.points];
         const snapXCoords = pointsForSnapping.map(p => p.x);
         const snapYCoords = pointsForSnapping.map(p => p.y);
 
@@ -741,9 +748,9 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     if (itemInfo.unit === 'm²') {
         if (points.length < 3) return null;
         let fillColor = 'rgba(200, 200, 200, 0.5)';
-        if (type === ItemType.CARPORT) fillColor = 'rgba(100, 100, 100, 0.7)';
-        else if (type === ItemType.PARKING) fillColor = 'rgba(220, 220, 220, 0.8)';
-        else if (type === ItemType.DECK) fillColor = 'rgba(165, 42, 42, 0.7)';
+        if (type === ItemType.FLOORING) fillColor = 'rgba(210, 180, 140, 0.8)';
+        else if (type === ItemType.TATAMI) fillColor = 'rgba(173, 219, 136, 0.8)';
+        else if (type === ItemType.CLOSET) fillColor = 'rgba(255, 228, 196, 0.6)';
 
         return (
             <polygon
@@ -757,14 +764,14 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         );
     }
     
-    if (itemInfo.unit === 'm') { // Line items like fences, blocks
+    if (type === ItemType.WALL_CROSS || type === ItemType.DOOR || type === ItemType.WINDOW) {
         if (points.length < 2) return null;
         let color = '#333';
         let width = 4 / zoom;
         
-        if (type === ItemType.FENCE) { color = '#6B7280'; width = 3 / zoom; }
-        else if (type === ItemType.BLOCK) { color = '#A1A1AA'; width = 8 / zoom; }
-        else if (type === ItemType.RETAINING_WALL) { color = '#78716C'; width = 10 / zoom; }
+        if (type === ItemType.WALL_CROSS) { color = '#555'; width = 6 / zoom; }
+        else if (type === ItemType.DOOR) { color = '#8B4513'; width = 4 / zoom; }
+        else if (type === ItemType.WINDOW) { color = '#87CEEB'; width = 4 / zoom; }
         
         if (isSelected) {
             color = '#EF4444';
@@ -783,33 +790,17 @@ export const Editor2D: React.FC<Editor2DProps> = ({
             />
         );
     }
-    
-    if (itemInfo.unit === 'item' && item.points.length === 2) { // Gate
-        if (points.length < 2) return null;
-        let color = '#4B5563';
-        let width = 6 / zoom;
-         if (isSelected) {
-            color = '#EF4444';
-            width += 2 / zoom;
-        }
-        return (
-             <polyline
-                key={id}
-                points={points.map(p => `${p.x},${p.y}`).join(' ')}
-                fill="none"
-                stroke={color}
-                strokeWidth={width}
-                strokeLinecap="round"
-                {...handleProps}
-            />
-        );
-    }
 
-    if (itemInfo.unit === 'item' && points.length === 1) { // Planting
+    if (points.length === 1) {
         const p = points[0];
         let r = 8 / zoom;
-        let fill = '#22C55E';
+        let fill = '#10B981';
         
+        if (type === ItemType.KITCHEN) { fill = '#EF4444'; r = 10 / zoom; }
+        else if (type === ItemType.BATH) { fill = '#3B82F6'; r = 12 / zoom; }
+        else if (type === ItemType.TOILET) { fill = '#6366F1'; r = 6 / zoom; }
+        else if (type === ItemType.WASHBASIN) { fill = '#06B6D4'; r = 6 / zoom; }
+
         const baseCircle = <circle cx={p.x} cy={p.y} r={r} fill={fill} stroke="white" strokeWidth={1/zoom} fillOpacity={0.8} />;
 
         if (isSelected) {
@@ -846,7 +837,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         </style>
         {!backgroundImage && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-gray-500 text-lg">敷地図をアップロードまたは撮影してください</p>
+            <p className="text-gray-500 text-lg">間取り図をアップロードまたは撮影してください</p>
           </div>
         )}
         <svg
