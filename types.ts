@@ -6,32 +6,35 @@ export interface Point {
   y: number;
 }
 
-export type BoundaryType = '敷地境界' | '道路境界線' | '隣地境界線';
+// Simplified boundary for interior (optional use)
+export type BoundaryType = '外壁' | '開口部';
 
 export interface Site {
   points: Point[];
-  boundaryTypes: BoundaryType[];
-  vertexHeights?: number[];
+  boundaryTypes: BoundaryType[]; // Can be used for wall types if needed
+  vertexHeights?: number[]; // Not strictly needed for flat floor plans but kept for compatibility
 }
 
 export enum ItemType {
-  PARKING_AREA = 'PARKING_AREA', // ポリゴン: 駐車場（土間コンクリート）
-  FENCE = 'FENCE',               // ライン: フェンス
-  BLOCK_WALL = 'BLOCK_WALL',     // ライン: ブロック塀
-  GATE = 'GATE',                 // ライン: 門扉
-  CARPORT = 'CARPORT',           // ポリゴン: カーポート
-  WOOD_DECK = 'WOOD_DECK',       // ポリゴン: ウッドデッキ
-  PLANTING = 'PLANTING',         // ポイント: 植栽
-  APPROACH = 'APPROACH',         // ポリゴン: アプローチ（タイル・石貼り）
+  FLOORING = 'FLOORING',      // ポリゴン: フローリング
+  TATAMI = 'TATAMI',          // ポリゴン: 畳
+  WALL_CROSS = 'WALL_CROSS',  // ライン: 壁（クロス張り替え）
+  KITCHEN = 'KITCHEN',        // ポイント: キッチン
+  TOILET = 'TOILET',          // ポイント: トイレ
+  BATH = 'BATH',              // ポイント: ユニットバス
+  WASHBASIN = 'WASHBASIN',    // ポイント: 洗面台
+  DOOR = 'DOOR',              // ライン/ポイント: ドア
+  // FIX: Add WINDOW and CLOSET to resolve errors in Editor2D.tsx
+  WINDOW = 'WINDOW',          // ライン: 窓
+  CLOSET = 'CLOSET',          // ポリゴン: クローゼット
 }
 
 export interface ExteriorItem {
   id: string;
   type: ItemType;
   points: Point[];
-  height?: number;
-  rotation?: number;
-  settings?: { [key: string]: any }; // アイテムごとの詳細設定
+  height?: number; // 家具や壁の高さなど
+  rotation?: number; // ポイントアイテムの回転
 }
 
 export enum ViewMode {

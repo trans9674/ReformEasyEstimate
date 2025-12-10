@@ -450,7 +450,7 @@ const App: React.FC = () => {
             const currentPoints = tempPoints;
 
             if (
-                (activeItemType === ItemType.PARKING_AREA || activeItemType === ItemType.WOOD_DECK) &&
+                (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
                 currentPoints.length > 0
             ) {
                 const lastPoint = currentPoints[currentPoints.length - 1];
@@ -499,7 +499,7 @@ const App: React.FC = () => {
             if (currentPoints.length >= 2 && getDistance(finalPoint, currentPoints[0]) < closeSnapDistance) {
                 let pointsToConfirm = [...currentPoints];
 
-                if ((activeItemType === ItemType.PARKING_AREA || activeItemType === ItemType.WOOD_DECK) && site.points.length >= 3) {
+                if ((activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) && site.points.length >= 3) {
                     try {
                         const siteRing = site.points.map(p => [p.x, p.y] as [number, number]);
                         if (siteRing[0][0] !== siteRing[siteRing.length-1][0] || siteRing[0][1] !== siteRing[siteRing.length-1][1]) {
@@ -757,7 +757,7 @@ const App: React.FC = () => {
     if (pendingConfirmation.type === 'site') {
         const newSite = { 
             points: pendingConfirmation.points,
-            boundaryTypes: Array(pendingConfirmation.points.length).fill('敷地境界') as BoundaryType[],
+            boundaryTypes: Array(pendingConfirmation.points.length).fill('外壁') as BoundaryType[],
             vertexHeights: Array(pendingConfirmation.points.length).fill(0)
         };
         setSite(newSite);
@@ -928,9 +928,9 @@ const App: React.FC = () => {
   const UploadScreen = () => (
     <div className="absolute inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center">
       <div className="w-full max-w-sm">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">敷地図を撮影・読込み</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">間取り図を撮影・読込み</h2>
         <p className="text-gray-600 mb-6 bg-blue-50 p-4 rounded-lg">
-          外構を計画したい敷地の図面を<br/><strong>真上から</strong>撮影またはファイルを読込んでください。
+          リフォームしたい部屋の間取り図を<br/><strong>真上から</strong>撮影またはファイルを読込んでください。
         </p>
         <label 
           htmlFor="file-upload-camera"

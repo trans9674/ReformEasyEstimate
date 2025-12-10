@@ -1,68 +1,83 @@
 
 import { ItemType, ItemInfo } from './types';
-import { ParkingIcon, FenceIcon, BlockWallIcon, GateIcon, CarportIcon, WoodDeckIcon, PlantingIcon, ApproachIcon } from './components/Icons';
+// FIX: Import WindowIcon and ClosetIcon
+import { FlooringIcon, TatamiIcon, WallIcon, KitchenIcon, ToiletIcon, BathIcon, WashbasinIcon, DoorIcon, WindowIcon, ClosetIcon } from './components/Icons';
 
 export const ITEM_CATALOG: Record<ItemType, ItemInfo> = {
-  [ItemType.PARKING_AREA]: {
-    name: '駐車場',
+  [ItemType.FLOORING]: {
+    name: 'フローリング',
     unit: 'm²',
-    pricePerUnit: 15000, // 土間コンクリート
+    pricePerUnit: 8000,
     pointsRequired: 3, // Polygon
-    icon: ParkingIcon,
+    icon: FlooringIcon,
   },
-  [ItemType.FENCE]: {
-    name: 'フェンス',
-    unit: 'm',
-    pricePerUnit: 18000, // メッシュフェンス H800
+  [ItemType.TATAMI]: {
+    name: '畳',
+    unit: 'm²',
+    pricePerUnit: 12000,
+    pointsRequired: 3, // Polygon
+    icon: TatamiIcon,
+  },
+  [ItemType.WALL_CROSS]: {
+    name: '壁紙',
+    unit: 'm', // Using linear meters for simplicity in this tool (approx height 2.4m)
+    pricePerUnit: 3500, // Cost per meter width (assuming standard height)
     pointsRequired: 2,
-    icon: FenceIcon,
-    defaultHeight: 0.8,
+    icon: WallIcon,
+    defaultHeight: 2.4,
   },
-  [ItemType.BLOCK_WALL]: {
-    name: 'ブロック塀',
-    unit: 'm',
-    pricePerUnit: 20000, // 2段積み
-    pointsRequired: 2,
-    icon: BlockWallIcon,
-    defaultHeight: 0.4,
+  [ItemType.KITCHEN]: {
+    name: 'キッチン',
+    unit: 'item',
+    pricePerUnit: 800000,
+    pointsRequired: 1,
+    icon: KitchenIcon,
   },
-  [ItemType.GATE]: {
-    name: '門扉',
+  [ItemType.BATH]: {
+    name: 'ユニットバス',
+    unit: 'item',
+    pricePerUnit: 1000000,
+    pointsRequired: 1,
+    icon: BathIcon,
+  },
+  [ItemType.TOILET]: {
+    name: 'トイレ',
     unit: 'item',
     pricePerUnit: 150000,
+    pointsRequired: 1,
+    icon: ToiletIcon,
+  },
+  [ItemType.WASHBASIN]: {
+    name: '洗面台',
+    unit: 'item',
+    pricePerUnit: 120000,
+    pointsRequired: 1,
+    icon: WashbasinIcon,
+  },
+  [ItemType.DOOR]: {
+    name: '室内ドア',
+    unit: 'item',
+    pricePerUnit: 50000,
     pointsRequired: 2, // Width and orientation
-    icon: GateIcon,
+    icon: DoorIcon,
+    defaultHeight: 2.0,
+  },
+  // FIX: Add WINDOW and CLOSET items to fix errors in Editor2D.tsx
+  [ItemType.WINDOW]: {
+    name: '窓',
+    unit: 'item',
+    pricePerUnit: 40000,
+    pointsRequired: 2,
+    icon: WindowIcon,
     defaultHeight: 1.2,
   },
-  [ItemType.CARPORT]: {
-    name: 'カーポート',
-    unit: 'item',
-    pricePerUnit: 300000, // 1台用
-    pointsRequired: 1,
-    icon: CarportIcon,
-    defaultHeight: 2.3,
-  },
-  [ItemType.WOOD_DECK]: {
-    name: 'ウッドデッキ',
+  [ItemType.CLOSET]: {
+    name: 'クローゼット',
     unit: 'm²',
-    pricePerUnit: 25000,
+    pricePerUnit: 20000,
     pointsRequired: 3, // Polygon
-    icon: WoodDeckIcon,
-  },
-  [ItemType.PLANTING]: {
-    name: '植栽',
-    unit: 'item',
-    pricePerUnit: 30000, // 中木
-    pointsRequired: 1,
-    icon: PlantingIcon,
-  },
-  [ItemType.APPROACH]: {
-    name: 'アプローチ',
-    unit: 'm²',
-    pricePerUnit: 20000, // 乱形石貼り
-    pointsRequired: 3, // Polygon
-    icon: ApproachIcon,
+    icon: ClosetIcon,
   },
 };
 
-export const SNAP_DISTANCE_METER = 0.1; // 10cm for exterior precision
+export const SNAP_DISTANCE_METER = 0.3; // 30cm for interior precision
