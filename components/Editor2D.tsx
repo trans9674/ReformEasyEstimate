@@ -103,6 +103,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   currentSetupStep,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const panZoomGroupRef = useRef<SVGGElement>(null);
   const contentGroupRef = useRef<SVGGElement>(null);
   const [mousePos, setMousePos] = useState<Point | null>(null);
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState<number | null>(null);
@@ -177,12 +178,37 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   };
 
   const getSVGPoint = (e: React.PointerEvent | React.MouseEvent | React.WheelEvent): Point => {
-    if (!svgRef.current || !contentGroupRef.current) return { x: 0, y: 0 };
+    if (!svgRef.current || !panZoomGroupRef.current) return { x: 0, y: 0 };
+    
     const pt = svgRef.current.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
-    const transformed = pt.matrixTransform(contentGroupRef.current.getScreenCTM()?.inverse());
-    return { x: transformed.x, y: transformed.y };
+
+    // Get the CTM of the pan/zoom group
+    const ctm = panZoomGroupRef.current.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+
+    // Transform to the coordinate system of the pan/zoom group
+    let transformedPoint = pt.matrixTransform(ctm.inverse());
+
+    // Manually apply the inverse rotation
+    if (rotation !== 0 && imageSize) {
+        const center = { x: imageSize.width / 2, y: imageSize.height / 2 };
+        const angleRad = -rotation * (Math.PI / 180);
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+
+        const tx = transformedPoint.x - center.x;
+        const ty = transformedPoint.y - center.y;
+
+        const rotatedX = tx * cos - ty * sin;
+        const rotatedY = tx * sin + ty * cos;
+
+        transformedPoint.x = rotatedX + center.x;
+        transformedPoint.y = rotatedY + center.y;
+    }
+
+    return { x: transformedPoint.x, y: transformedPoint.y };
   };
   
   const applyZoom = useCallback((factor: number, screenCenter: Point) => {
@@ -852,7 +878,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
                 <pattern id="minorGrid" width={MINOR_GRID_SPACING} height={MINOR_GRID_SPACING} patternUnits="userSpaceOnUse"><path d={`M ${MINOR_GRID_SPACING} 0 L 0 0 0 ${MINOR_GRID_SPACING}`} fill="none" stroke="#E0E0E0" strokeWidth="0.5" vectorEffect="non-scaling-stroke" /></pattern>
                 <pattern id="majorGrid" width={MAJOR_GRID_SPACING} height={MAJOR_GRID_SPACING} patternUnits="userSpaceOnUse"><rect width={MAJOR_GRID_SPACING} height={MAJOR_GRID_SPACING} fill="url(#minorGrid)"/><path d={`M ${MAJOR_GRID_SPACING} 0 L 0 0 0 ${MAJOR_GRID_SPACING}`} fill="none" stroke="#CCCCCC" strokeWidth="1" vectorEffect="non-scaling-stroke" /></pattern>
             </defs>
-            <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
+            <g ref={panZoomGroupRef} transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
                 <g ref={contentGroupRef} transform={`rotate(${rotation} ${center.x} ${center.y})`}>
                     {imageSize && (<rect x={center.x - gridCoverageSize / 2} y={center.y - gridCoverageSize / 2} width={gridCoverageSize} height={gridCoverageSize} fill="url(#majorGrid)" />)}
                     {backgroundImage && <image href={backgroundImage} x="0" y="0" width="100%" height="100%" />}

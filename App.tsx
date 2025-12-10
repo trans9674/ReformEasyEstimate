@@ -5,7 +5,6 @@ import { Editor3D } from './components/Editor3D';
 import { ControlPanel } from './components/ControlPanel';
 import { Site, ExteriorItem, Point, ViewMode, ToolMode, ItemType, BoundaryType, DrawingElement, LineStyle } from './types';
 import { ITEM_CATALOG, SNAP_DISTANCE_METER } from './constants';
-import { ConfirmationModal as ConfirmationControls } from './components/ConfirmationModal';
 import { ScaleModal as ScaleControl } from './components/ScaleModal';
 import { RotationModal } from './components/RotationModal';
 import { Header } from './components/Header';
@@ -15,6 +14,7 @@ import { FlipModal } from './components/FlipModal';
 import { ImageAdjuster } from './components/ImageAdjuster';
 import { CameraIcon } from './components/Icons';
 import { SetupStepper } from './components/SetupStepper';
+import { ToastModal } from './components/ToastModal';
 import polygonClipping from 'polygon-clipping';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -152,6 +152,7 @@ const App: React.FC = () => {
   const [rotation, setRotation] = useState(0); // degrees
   const [rotationAdjusted, setRotationAdjusted] = useState(false);
   const [isSiteFinalized, setIsSiteFinalized] = useState(false);
+  const [toast, setToast] = useState<{title: string, message: string} | null>(null);
 
 
   const commitState = useCallback((newSite: Site, newItems: ExteriorItem[], newScale: number | null, newDrawings: DrawingElement[]) => {
@@ -886,7 +887,7 @@ const App: React.FC = () => {
     });
   }, [items, scale]);
 
-  const totalCost = useMemo(() => Math.round(quote.reduce((sum, item) => sum + item.total, 0)), [quote]);
+  const totalCost = useMemo(() => Math.ceil(quote.reduce((sum, item) => sum + item.total, 0) / 100) * 100, [quote]);
   const isImageLoaded = !!backgroundImage;
   const isSetupComplete = !!(isImageLoaded && rotationAdjusted && isSiteFinalized && scale);
 
@@ -897,6 +898,38 @@ const App: React.FC = () => {
     if (!scale) return 4;
     return 5; // setup is complete
   }, [isImageLoaded, rotationAdjusted, isSiteFinalized, scale]);
+
+  useEffect(() => {
+    let message: {title: string, message: string} | null = null;
+    switch (currentSetupStep) {
+        case 2:
+            message = {
+                title: 'ステップ2: 配置調整',
+                message: 'ピンチ操作で図面を拡大・縮小し、回転させて水平・垂直を合わせてください。'
+            };
+            break;
+        case 3:
+            message = {
+                title: 'ステップ3: 部屋の外周を設定',
+                message: '部屋の角をクリックして外周をなぞります。始点をクリックすると確定します。'
+            };
+            break;
+        case 4:
+            message = {
+                title: 'ステップ4: 部屋の長さを設定',
+                message: '長さがわかっている2つの角をクリックし、実際の長さをメートルで入力してください。'
+            };
+            break;
+    }
+
+    if (message) {
+        setToast(message);
+        const timer = setTimeout(() => {
+            setToast(null);
+        }, 4000);
+        return () => clearTimeout(timer);
+    }
+  }, [currentSetupStep]);
 
   const handleGoToStep = useCallback((step: number) => {
     if (step >= currentSetupStep) return;
@@ -924,7 +957,7 @@ const App: React.FC = () => {
         }
     }
   }, [currentSetupStep, handleNewFile, items, drawings, commitState]);
-
+  
   const UploadScreen = () => (
     <div className="absolute inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center">
       <div className="w-full max-w-sm">
@@ -964,8 +997,25 @@ const App: React.FC = () => {
     </div>
   );
 
+  let headerConfirmAction: (() => void) | undefined = undefined;
+  let headerCancelAction: (() => void) | undefined = undefined;
+  let headerRotateAction: (() => void) | undefined = undefined;
+
+  if (isImageLoaded && !rotationAdjusted) {
+    headerConfirmAction = handleRotationConfirm;
+    headerCancelAction = handleNewFile;
+    headerRotateAction = handleRotate90;
+  } else if (pendingConfirmation) {
+    headerConfirmAction = handlePendingConfirm;
+    headerCancelAction = handlePendingCancel;
+  } else if (isSettingScale) {
+    headerConfirmAction = handleScaleSet;
+    headerCancelAction = handleScaleCancel;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen font-sans bg-white">
+      {toast && <ToastModal title={toast.title} message={toast.message} />}
       <Header
         viewMode={viewMode}
         onViewModeChange={setViewMode}
@@ -974,6 +1024,9 @@ const App: React.FC = () => {
         scale={scale}
         totalCost={totalCost}
         isSetupComplete={isSetupComplete}
+        onConfirm={headerConfirmAction}
+        onCancel={headerCancelAction}
+        onRotate90={headerRotateAction}
       />
       <div className="flex flex-1 overflow-hidden relative">
         <main className={`flex-1 relative bg-white md:mb-0 ${isSetupComplete ? 'mb-[190px]' : ''}`}>
@@ -984,11 +1037,7 @@ const App: React.FC = () => {
           )}
 
           {isImageLoaded && !rotationAdjusted && (
-            <ImageAdjuster
-              onCancel={handleNewFile}
-              onRotate90={handleRotate90}
-              onConfirm={handleRotationConfirm}
-            />
+            <ImageAdjuster />
           )}
           
           {viewMode === ViewMode.TWO_D ? (
@@ -1037,24 +1086,13 @@ const App: React.FC = () => {
               rotation={rotation}
             />
           )}
-          {pendingConfirmation && (
-              <ConfirmationControls
-                  onConfirm={handlePendingConfirm}
-                  onCancel={handlePendingCancel}
-              />
-          )}
+          
           {isSettingScale && (
-              <>
-                <ScaleControl 
-                    value={scaleInputValue} 
-                    onChange={setScaleInputValue}
-                    onConfirm={handleScaleSet}
-                />
-                <ConfirmationControls
-                    onConfirm={handleScaleSet}
-                    onCancel={handleScaleCancel}
-                />
-              </>
+              <ScaleControl 
+                  value={scaleInputValue} 
+                  onChange={setScaleInputValue}
+                  onConfirm={handleScaleSet}
+              />
           )}
           {isRotationModalOpen && (
               <RotationModal

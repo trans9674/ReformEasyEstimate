@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewMode } from '../types';
-import { CameraIcon, CubeIcon } from './Icons';
+import { CameraIcon, CubeIcon, RotateIcon as Rotate90Icon } from './Icons';
 
 interface HeaderProps {
   viewMode: ViewMode;
@@ -10,7 +10,23 @@ interface HeaderProps {
   scale: number | null;
   totalCost: number;
   isSetupComplete: boolean;
+  onConfirm?: () => void;
+  onCancel?: () => void;
+  onRotate90?: () => void;
 }
+
+const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+);
+  
+const CheckIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+);
 
 export const Header: React.FC<HeaderProps> = ({
   viewMode,
@@ -20,6 +36,9 @@ export const Header: React.FC<HeaderProps> = ({
   scale,
   totalCost,
   isSetupComplete,
+  onConfirm,
+  onCancel,
+  onRotate90
 }) => {
 
   return (
@@ -46,14 +65,40 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="flex-grow min-w-[10px]"></div>
 
-        {isSetupComplete && (
+        {onConfirm && onCancel ? (
+          <div className="flex items-center gap-2 shrink-0">
+            {onRotate90 && (
+              <button
+                onClick={onRotate90}
+                className="bg-gray-700 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-lg hover:bg-gray-600 transition-colors"
+                aria-label="90度回転"
+              >
+                <Rotate90Icon className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={onCancel}
+              className="bg-gray-700 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-lg hover:bg-gray-600 transition-colors"
+              aria-label="キャンセル"
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onConfirm}
+              className="bg-yellow-400 rounded-full w-9 h-9 flex items-center justify-center shadow-lg hover:bg-yellow-500 transition-colors"
+              aria-label="決定"
+            >
+              <CheckIcon className="w-6 h-6 text-gray-800" />
+            </button>
+          </div>
+        ) : isSetupComplete ? (
           <div className="text-right shrink-0">
             <p className="text-xs text-gray-500 whitespace-nowrap">概算お見積り</p>
             <p className="text-xl font-bold text-gray-800 whitespace-nowrap">
               {totalCost.toLocaleString('ja-JP')}円
             </p>
           </div>
-        )}
+        ) : null}
 
       </div>
     </header>
