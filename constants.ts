@@ -1,4 +1,3 @@
-
 import { ItemType, ItemInfo } from './types';
 // FIX: Import WindowIcon and ClosetIcon
 import { FlooringIcon, TatamiIcon, WallIcon, KitchenIcon, ToiletIcon, BathIcon, WashbasinIcon, DoorIcon, WindowIcon, ClosetIcon } from './components/Icons';
@@ -28,10 +27,11 @@ export const ITEM_CATALOG: Record<ItemType, ItemInfo> = {
   },
   [ItemType.KITCHEN]: {
     name: 'キッチン',
-    unit: 'item',
+    unit: 'm²',
     pricePerUnit: 800000,
-    pointsRequired: 1,
+    pointsRequired: 2,
     icon: KitchenIcon,
+    defaultHeight: 0.85,
   },
   [ItemType.BATH]: {
     name: 'ユニットバス',

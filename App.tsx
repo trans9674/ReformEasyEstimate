@@ -1,9 +1,11 @@
+
 // FIX: Removed extraneous file content that was concatenated to this file, causing compilation errors.
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Editor2D } from './components/Editor2D';
 import { Editor3D } from './components/Editor3D';
 import { ControlPanel } from './components/ControlPanel';
-import { Site, ExteriorItem, Point, ViewMode, ToolMode, ItemType, BoundaryType, DrawingElement, LineStyle } from './types';
+// FIX: Import ConfirmationState from the shared types file.
+import { Site, ExteriorItem, Point, ViewMode, ToolMode, ItemType, BoundaryType, DrawingElement, LineStyle, ConfirmationState } from './types';
 import { ITEM_CATALOG, SNAP_DISTANCE_METER } from './constants';
 import { ScaleModal as ScaleControl } from './components/ScaleModal';
 import { RotationModal } from './components/RotationModal';
@@ -95,6 +97,11 @@ type EditingState = {
 } | {
     type: 'vertex';
     vertexIndex: number;
+} | {
+    type: 'item_drag';
+    itemId: string;
+    startPoint: Point;
+    originalPoints: Point[];
 };
 
 type HistoryState = {
@@ -104,16 +111,7 @@ type HistoryState = {
     drawings: DrawingElement[];
 };
 
-type ConfirmationState = {
-    type: 'site' | 'item';
-    points: Point[];
-    itemType?: ItemType;
-} | {
-    type: 'overwrite_intersecting_item';
-    newItemPoints: Point[];
-    newItemType: ItemType;
-    intersectedItemIds: string[];
-};
+// FIX: Removed local ConfirmationState definition. It has been moved to types.ts to be shared.
 
 
 const App: React.FC = () => {
@@ -445,94 +443,70 @@ const App: React.FC = () => {
         }
         
         const itemInfo = ITEM_CATALOG[activeItemType];
+
+        if (activeItemType === ItemType.KITCHEN) {
+            if (!scale) {
+                alert("縮尺が設定されていません。先に長さを設定してください。");
+                return;
+            }
+            const p1 = finalPoint;
+            const widthPx = 2.5 * scale;
+            const depthPx = 0.65 * scale;
+
+            // Default horizontal placement
+            const p2 = { x: p1.x + widthPx, y: p1.y };
+            const p3 = { x: p1.x + widthPx, y: p1.y + depthPx };
+            const p4 = { x: p1.x, y: p1.y + depthPx };
+
+            const rectPoints = [p1, p2, p3, p4];
+
+            const newItems = [...items, {
+                id: `${Date.now()}`,
+                type: activeItemType,
+                points: rectPoints,
+                height: itemInfo.defaultHeight,
+            }];
+            setItems(newItems);
+            commitState(site, newItems, scale, drawings);
+            setTempPoints([]);
+            return;
+        }
+
+        if (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) {
+            const newTempPoints = [...tempPoints, finalPoint];
+            if (newTempPoints.length === 2) {
+                const p1 = newTempPoints[0];
+                const p2 = newTempPoints[1];
+                const rectPoints: Point[] = [
+                    { x: p1.x, y: p1.y },
+                    { x: p2.x, y: p1.y },
+                    { x: p2.x, y: p2.y },
+                    { x: p1.x, y: p2.y },
+                ];
+
+                const newItems = [...items, {
+                    id: `${Date.now()}`,
+                    type: activeItemType,
+                    points: rectPoints,
+                    height: itemInfo.defaultHeight,
+                }];
+                setItems(newItems);
+                commitState(site, newItems, scale, drawings);
+                setTempPoints([]);
+            } else {
+                setTempPoints(newTempPoints);
+            }
+            return;
+        }
+        
         const isPolygon = itemInfo.unit === 'm²';
         
         if (isPolygon) {
             const currentPoints = tempPoints;
-
-            if (
-                (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
-                currentPoints.length > 0
-            ) {
-                const lastPoint = currentPoints[currentPoints.length - 1];
-
-                const dx = finalPoint.x - lastPoint.x;
-                const dy = finalPoint.y - lastPoint.y;
-                const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-                const snapThreshold = 20;
-
-                const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
-                const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
-
-                const allPointsForSnap = [...currentPoints, ...site.points];
-                const snapXCoords = allPointsForSnap.map(p => p.x);
-                const snapYCoords = allPointsForSnap.map(p => p.y);
-
-                if (isHorizontalIntent) {
-                    finalPoint.y = lastPoint.y; // Maintain right angle (horizontal)
-                    let closestX = finalPoint.x;
-                    let minDx = snapDistanceSVG;
-                    for (const x of snapXCoords) {
-                        const dist = Math.abs(finalPoint.x - x);
-                        if (dist < minDx) {
-                            minDx = dist;
-                            closestX = x;
-                        }
-                    }
-                    finalPoint.x = closestX;
-                } else if (isVerticalIntent) {
-                    finalPoint.x = lastPoint.x; // Maintain right angle (vertical)
-                    let closestY = finalPoint.y;
-                    let minDy = snapDistanceSVG;
-                    for (const y of snapYCoords) {
-                        const dist = Math.abs(finalPoint.y - y);
-                        if (dist < minDy) {
-                            minDy = dist;
-                            closestY = y;
-                        }
-                    }
-                    finalPoint.y = closestY;
-                }
-            }
-            
             const closeSnapDistance = (snapDistancePixels * 4.0) / zoom;
 
             if (currentPoints.length >= 2 && getDistance(finalPoint, currentPoints[0]) < closeSnapDistance) {
                 let pointsToConfirm = [...currentPoints];
-
-                if ((activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) && site.points.length >= 3) {
-                    try {
-                        const siteRing = site.points.map(p => [p.x, p.y] as [number, number]);
-                        if (siteRing[0][0] !== siteRing[siteRing.length-1][0] || siteRing[0][1] !== siteRing[siteRing.length-1][1]) {
-                            siteRing.push([siteRing[0][0], siteRing[0][1]]);
-                        }
-
-                        const slabRing = currentPoints.map(p => [p.x, p.y] as [number, number]);
-                        if (slabRing[0][0] !== slabRing[slabRing.length-1][0] || slabRing[0][1] !== slabRing[slabRing.length-1][1]) {
-                             slabRing.push([slabRing[0][0], slabRing[0][1]]);
-                        }
-
-                        const intersected = polygonClipping.intersection([slabRing], [siteRing]);
-
-                        if (intersected.length > 0 && intersected[0].length > 0) {
-                            const resultRing = intersected[0][0];
-                            pointsToConfirm = resultRing.map(p => ({ x: p[0], y: p[1] }));
-                            if (pointsToConfirm.length > 1) {
-                                const first = pointsToConfirm[0];
-                                const last = pointsToConfirm[pointsToConfirm.length - 1];
-                                if (Math.abs(first.x - last.x) < 1e-9 && Math.abs(first.y - last.y) < 1e-9) {
-                                    pointsToConfirm.pop();
-                                }
-                            }
-                            if (isClockwise(pointsToConfirm)) {
-                                pointsToConfirm.reverse();
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Clipping failed:", e);
-                    }
-                }
-
                 setPendingConfirmation({ type: 'item', points: pointsToConfirm, itemType: activeItemType });
             } else {
                 setTempPoints(prev => [...prev, finalPoint]);
@@ -559,8 +533,12 @@ const App: React.FC = () => {
   const handleItemSelect = useCallback((itemId: string) => {
       if (toolMode === ToolMode.SELECT) {
           setSelectedItemId(itemId);
+          const item = items.find(i => i.id === itemId);
+          if (item?.type === ItemType.KITCHEN) {
+              setIsItemRotationModalOpen(true);
+          }
       }
-  }, [toolMode]);
+  }, [toolMode, items]);
 
   const handleItemContextMenu = useCallback((itemId: string, event: React.MouseEvent) => {
       event.preventDefault();
@@ -569,6 +547,20 @@ const App: React.FC = () => {
           setIsItemActionModalOpen(true);
       }
   }, [toolMode]);
+
+  const handleItemLongPress = useCallback((itemId: string, startPoint: Point) => {
+    if (toolMode !== ToolMode.SELECT) return;
+
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    setEditingState({
+        type: 'item_drag',
+        itemId,
+        startPoint,
+        originalPoints: item.points
+    });
+  }, [toolMode, items]);
 
   // Geometry Actions
   const updateItemPoints = (itemId: string, newPoints: Point[]) => {
@@ -678,8 +670,8 @@ const App: React.FC = () => {
   const handleCanvasMouseMove = useCallback((movePoint: Point) => {
     if (!editingState) return;
     
-    let newSitePoints = [...site.points];
     if (editingState.type === 'edge') {
+        let newSitePoints = [...site.points];
         const { startPoint, edgeNormal, originalP1, originalP2, edgeIndex } = editingState;
         const moveVector = { x: movePoint.x - startPoint.x, y: movePoint.y - startPoint.y };
         const displacement = moveVector.x * edgeNormal.x + moveVector.y * edgeNormal.y;
@@ -692,11 +684,26 @@ const App: React.FC = () => {
         
         newSitePoints[p1Index] = newP1;
         newSitePoints[p2Index] = newP2;
+        setSite({ ...site, points: newSitePoints });
     
     } else if (editingState.type === 'vertex') {
+        let newSitePoints = [...site.points];
         newSitePoints[editingState.vertexIndex] = movePoint;
+        setSite({ ...site, points: newSitePoints });
+    } else if (editingState.type === 'item_drag') {
+        const { startPoint, originalPoints } = editingState;
+        const dx = movePoint.x - startPoint.x;
+        const dy = movePoint.y - startPoint.y;
+
+        const newPoints = originalPoints.map(p => ({
+            x: p.x + dx,
+            y: p.y + dy,
+        }));
+
+        setItems(currentItems => currentItems.map(item => 
+            item.id === editingState.itemId ? { ...item, points: newPoints } : item
+        ));
     }
-    setSite({ ...site, points: newSitePoints });
 
   }, [editingState, site]);
 
@@ -920,6 +927,12 @@ const App: React.FC = () => {
                 message: '長さがわかっている2つの角をクリックし、実際の長さをメートルで入力してください。'
             };
             break;
+        case 5:
+            message = {
+                title: '🎉 セットアップ完了！',
+                message: '準備が整いました。下のパネルから設備などを配置して、見積もりを作成しましょう。'
+            };
+            break;
     }
 
     if (message) {
@@ -1068,6 +1081,7 @@ const App: React.FC = () => {
               selectedItemId={selectedItemId}
               onItemSelect={handleItemSelect}
               onItemContextMenu={handleItemContextMenu}
+              onItemLongPress={handleItemLongPress}
               onCancelDrawing={handleCancelDrawing}
               onCancelLastSitePoint={handleCancelLastSitePoint}
               scale={scale}

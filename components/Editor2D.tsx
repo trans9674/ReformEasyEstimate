@@ -1,6 +1,8 @@
+
 // ... (imports and top of file remain unchanged)
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { Site, ExteriorItem, Point, ToolMode, ItemType, DrawingElement, LineStyle } from '../types';
+// FIX: Import the shared ConfirmationState type.
+import { Site, ExteriorItem, Point, ToolMode, ItemType, DrawingElement, LineStyle, ConfirmationState } from '../types';
 import { ITEM_CATALOG } from '../constants';
 
 // ... (interfaces and helper functions remain unchanged)
@@ -31,15 +33,30 @@ interface Editor2DProps {
   selectedItemId: string | null;
   onItemSelect: (id: string) => void;
   onItemContextMenu: (id: string, e: React.MouseEvent) => void;
+  onItemLongPress: (itemId: string, startPoint: Point) => void;
   onCancelDrawing: () => void;
   onCancelLastSitePoint: () => void;
   scale: number | null;
-  pendingConfirmation: { type: 'site' | 'item', points: Point[] } | null;
+  // FIX: Updated prop type to use the shared ConfirmationState.
+  pendingConfirmation: ConfirmationState | null;
   onCancelConfirmation: () => void;
   currentSetupStep: number;
 }
 
 const getDistance = (p1: Point, p2: Point) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+function isPointInPolygon(point: Point, polygon: Point[]): boolean {
+    let isInside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x, yi = polygon[i].y;
+        const xj = polygon[j].x, yj = polygon[j].y;
+
+        const intersect = ((yi > point.y) !== (yj > point.y))
+            && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+        if (intersect) isInside = !isInside;
+    }
+    return isInside;
+}
 
 function getPointToSegmentDistance(p: Point, a: Point, b: Point) {
     const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
@@ -95,6 +112,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
   selectedItemId,
   onItemSelect,
   onItemContextMenu,
+  onItemLongPress,
   onCancelDrawing,
   onCancelLastSitePoint,
   scale,
@@ -151,7 +169,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
 
   const getCursor = () => {
     if (isPanning || gestureStateRef.current?.isGesturing) return 'grabbing';
-    if (toolMode === ToolMode.EDIT_SITE || (currentSetupStep === 3 && isEditing)) {
+    if (toolMode === ToolMode.EDIT_SITE || (currentSetupStep === 3 && isEditing) || isEditing) {
         if(isEditing) return 'grabbing';
         if (hoveredVertexIndex !== null) return 'grab';
         if (hoveredEdgeIndex !== null) return 'move';
@@ -510,8 +528,6 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
-        // If timer is cleared before firing, it was a short click.
-        // We might want to trigger a normal click here if needed, but for now we do nothing on short-clicking a vertex in step 3.
     }
     longPressDragInfoRef.current = null;
 
@@ -592,10 +608,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
       return snappedPoint.point;
     }
     
-    const isOrthogonalSnappingActive = (toolMode === ToolMode.DRAW_SITE && lastActivePoint) || 
-                                     (toolMode === ToolMode.ADD_ITEM &&
-                                      (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
-                                      lastActivePoint);
+    const isOrthogonalSnappingActive = (toolMode === ToolMode.DRAW_SITE && lastActivePoint);
 
     if (isOrthogonalSnappingActive) {
         let finalPoint = { ...mousePos };
@@ -754,6 +767,8 @@ export const Editor2D: React.FC<Editor2DProps> = ({
     const strokeWidth = (isSelected ? 4 : 2) / zoom;
     const strokeColorBase = isSelected ? '#EF4444' : '#555'; 
 
+    const isKitchen = type === ItemType.KITCHEN;
+
     const handleProps = {
         onClick: (e: React.MouseEvent) => {
             e.stopPropagation();
@@ -762,6 +777,18 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         onContextMenu: (e: React.MouseEvent) => {
             e.stopPropagation();
             onItemContextMenu(id, e);
+        },
+        onPointerDown: (e: React.PointerEvent) => {
+            if (toolMode !== ToolMode.SELECT || !isKitchen) return;
+            e.stopPropagation();
+            const point = getSVGPoint(e);
+            longPressDragInfoRef.current = { startPoint: { x: e.clientX, y: e.clientY } };
+            longPressTimerRef.current = window.setTimeout(() => {
+                if (longPressDragInfoRef.current) {
+                    onItemLongPress(id, point);
+                    longPressDragInfoRef.current = null;
+                }
+            }, 400);
         },
         style: { cursor: toolMode === ToolMode.SELECT ? 'pointer' : 'default' }
     };
@@ -772,11 +799,18 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         if (type === ItemType.FLOORING) fillColor = 'rgba(210, 180, 140, 0.8)';
         else if (type === ItemType.TATAMI) fillColor = 'rgba(173, 219, 136, 0.8)';
         else if (type === ItemType.CLOSET) fillColor = 'rgba(255, 228, 196, 0.6)';
+        else if (type === ItemType.KITCHEN) fillColor = 'rgba(239, 68, 68, 0.8)';
+        
+        let renderPoints = points;
+        if (type === ItemType.TATAMI && scale) {
+            const offset = 0.18 * scale; // 18cm up
+            renderPoints = points.map(p => ({ x: p.x, y: p.y - offset }));
+        }
 
         return (
             <polygon
                 key={id}
-                points={points.map(p => `${p.x},${p.y}`).join(' ')}
+                points={renderPoints.map(p => `${p.x},${p.y}`).join(' ')}
                 fill={isSelected ? fillColor.replace(/[\d.]+\)/, '0.95)') : fillColor}
                 stroke={strokeColorBase}
                 strokeWidth={strokeWidth}
@@ -817,8 +851,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         let r = 8 / zoom;
         let fill = '#10B981';
         
-        if (type === ItemType.KITCHEN) { fill = '#EF4444'; r = 10 / zoom; }
-        else if (type === ItemType.BATH) { fill = '#3B82F6'; r = 12 / zoom; }
+        if (type === ItemType.BATH) { fill = '#3B82F6'; r = 12 / zoom; }
         else if (type === ItemType.TOILET) { fill = '#6366F1'; r = 6 / zoom; }
         else if (type === ItemType.WASHBASIN) { fill = '#06B6D4'; r = 6 / zoom; }
 
@@ -840,6 +873,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
 
   const center = imageSize ? { x: imageSize.width / 2, y: imageSize.height / 2 } : { x: 50, y: 50 };
   const gridCoverageSize = imageSize ? Math.max(imageSize.width, imageSize.height) * 10 : 10000;
+  const imageOffsetY = 0;
 
   return (
     <div className="w-full h-full">
@@ -881,17 +915,58 @@ export const Editor2D: React.FC<Editor2DProps> = ({
             <g ref={panZoomGroupRef} transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
                 <g ref={contentGroupRef} transform={`rotate(${rotation} ${center.x} ${center.y})`}>
                     {imageSize && (<rect x={center.x - gridCoverageSize / 2} y={center.y - gridCoverageSize / 2} width={gridCoverageSize} height={gridCoverageSize} fill="url(#majorGrid)" />)}
-                    {backgroundImage && <image href={backgroundImage} x="0" y="0" width="100%" height="100%" />}
+                    {backgroundImage && <image href={backgroundImage} x="0" y={imageOffsetY} width="100%" height="100%" />}
                     {drawings.map(renderDrawingElement)}
                     {items.map(renderItem)}
-                    {pendingConfirmation?.type === 'item' && (<polygon points={pendingConfirmation.points.map(p => `${p.x},${p.y}`).join(' ')} fill="rgba(239, 68, 68, 0.3)" stroke="#EF4444" strokeWidth={3 / zoom} strokeDasharray={`${6 / zoom}`} />)}
+                    {/* FIX: Add type guard to safely access .points property. */}
+                    {pendingConfirmation && pendingConfirmation.type === 'item' && (<polygon points={pendingConfirmation.points.map(p => `${p.x},${p.y}`).join(' ')} fill="rgba(239, 68, 68, 0.3)" stroke="#EF4444" strokeWidth={3 / zoom} strokeDasharray={`${6 / zoom}`} />)}
                     <g>
                         <polygon points={site.points.map(p => `${p.x},${p.y}`).join(' ')} fill={isConfirming && pendingConfirmation?.type === 'site' ? "rgba(249, 115, 22, 0.3)" : "rgba(249, 115, 22, 0.1)"} stroke="#A1A1AA" strokeWidth={18 / zoom} strokeLinejoin="round" />
                         <polygon points={site.points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#F97316" strokeWidth={10 / zoom} strokeLinejoin="round" />
                     </g>
                     {site.points.map((p, i) => { const isStartPoint = i === 0; const showBlink = toolMode === ToolMode.DRAW_SITE && !isConfirming && site.points.length >= 1 && isStartPoint; return (<circle key={`site-vertex-${i}`} cx={p.x} cy={p.y} r={54 / zoom} fill="#F97316" stroke="white" strokeWidth={3/zoom} className={showBlink ? 'blinking-dot' : ''} />); })}
                     {toolMode === ToolMode.DRAW_SITE && !isConfirming && mousePos && site.points.length > 0 && dynamicEndPoint && (<g><line x1={site.points[site.points.length - 1].x} y1={site.points[site.points.length - 1].y} x2={dynamicEndPoint.x} y2={dynamicEndPoint.y} stroke="#A1A1AA" strokeWidth={18 / zoom} strokeDasharray={`${24 / zoom}`} strokeLinecap="round" /><line x1={site.points[site.points.length - 1].x} y1={site.points[site.points.length - 1].y} x2={dynamicEndPoint.x} y2={dynamicEndPoint.y} stroke="#F97316" strokeWidth={10 / zoom} strokeDasharray={`${24 / zoom}`} strokeLinecap="round" /></g>)}
-                    {toolMode === ToolMode.ADD_ITEM && !isConfirming && tempPoints.length > 0 && mousePos && activeItemType && dynamicEndPoint && (<polyline points={[...tempPoints, dynamicEndPoint].map(p => `${p.x},${p.y}`).join(' ')} stroke="#EF4444" strokeWidth={12 / zoom} fill={ITEM_CATALOG[activeItemType].unit === 'm²' && isCloseToStart ? 'rgba(239, 68, 68, 0.3)' : 'none'} strokeDasharray={`${24 / zoom}`} />)}
+                    {toolMode === ToolMode.ADD_ITEM && !isConfirming && tempPoints.length > 0 && mousePos && activeItemType && dynamicEndPoint && (() => {
+                        const itemInfo = ITEM_CATALOG[activeItemType];
+
+                        const isRectTool = activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI;
+                        if (isRectTool) {
+                            if (tempPoints.length === 1) {
+                                const p1 = tempPoints[0];
+                                const p2 = dynamicEndPoint;
+                                const x = Math.min(p1.x, p2.x);
+                                const y = Math.min(p1.y, p2.y);
+                                const width = Math.abs(p1.x - p2.x);
+                                const height = Math.abs(p1.y - p2.y);
+                                return (
+                                    <rect
+                                        x={x}
+                                        y={y}
+                                        width={width}
+                                        height={height}
+                                        stroke="#EF4444"
+                                        strokeWidth={4 / zoom}
+                                        fill="rgba(239, 68, 68, 0.3)"
+                                        strokeDasharray={`${12 / zoom}`}
+                                    />
+                                );
+                            }
+                            return null;
+                        }
+
+                        if (itemInfo.pointsRequired > 1) {
+                            return (
+                                <polyline
+                                    points={[...tempPoints, dynamicEndPoint].map(p => `${p.x},${p.y}`).join(' ')}
+                                    stroke="#EF4444"
+                                    strokeWidth={12 / zoom}
+                                    fill={itemInfo.unit === 'm²' && isCloseToStart ? 'rgba(239, 68, 68, 0.3)' : 'none'}
+                                    strokeDasharray={`${24 / zoom}`}
+                                />
+                            );
+                        }
+                        return null;
+                    })()}
                     {renderTempDrawing()}
                     {toolMode === ToolMode.ADD_ITEM && activeItemType && (ITEM_CATALOG[activeItemType].unit === 'item') && mousePos && (<circle cx={mousePos.x} cy={mousePos.y} r={54 / zoom} fill="rgba(239, 68, 68, 0.5)" />)}
                     {tempPoints.map((p, i) => { const isPolygonItem = activeItemType && ITEM_CATALOG[activeItemType].unit === 'm²'; const isStartPoint = i === 0; const showBlink = toolMode === ToolMode.ADD_ITEM && !isConfirming && isPolygonItem && tempPoints.length >= 1 && isStartPoint; return (<circle key={`temp-${i}`} cx={p.x} cy={p.y} r={54 / zoom} fill="#EF4444" stroke="white" strokeWidth={3/zoom} className={showBlink ? 'blinking-dot' : ''} />); })}

@@ -1,4 +1,3 @@
-
 import React, { useMemo, useCallback } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -22,8 +21,8 @@ interface ItemComponentProps {
 }
 
 // Basic textures and materials
-const floorMaterial = new THREE.MeshStandardMaterial({ color: '#D2B48C', transparent: true, opacity: 0.8 }); // Light wood
-const tatamiMaterial = new THREE.MeshStandardMaterial({ color: '#ADDB88', transparent: true, opacity: 0.8 }); // Greenish
+const floorMaterial = new THREE.MeshStandardMaterial({ color: '#D2B48C', transparent: true, opacity: 0.8, side: THREE.DoubleSide }); // Light wood
+const tatamiMaterial = new THREE.MeshStandardMaterial({ color: '#ADDB88', transparent: true, opacity: 0.8, side: THREE.DoubleSide }); // Greenish
 const wallMaterial = new THREE.MeshStandardMaterial({ color: '#F0F0F0', side: THREE.DoubleSide });
 
 const Wall: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
@@ -52,17 +51,14 @@ const Wall: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
 
 const Flooring: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
     const points3D_flat = useMemo(() => {
-        // 2D座標(Y軸下向き)で反時計回りの頂点リストは、3DのXZ平面(Y軸上向き)から見ると時計回りになる。
-        // THREE.Shapeは反時計回りを期待するため、頂点リストの順序を逆転させる。
-        const reversedPoints = [...item.points].reverse();
-        return reversedPoints.map(p => get3DPoint(p));
+        return item.points.map(p => get3DPoint(p));
     }, [item.points, get3DPoint]);
 
     const geometry = useMemo(() => {
         if (points3D_flat.length < 3) return null;
         const shape = new THREE.Shape(points3D_flat.map(v => new THREE.Vector2(v.x, v.z)));
         const geom = new THREE.ShapeGeometry(shape);
-        // Rotate to lie flat on the XZ plane
+        // Rotate from local XY plane to world XZ plane, ensuring normal points up (+Y).
         geom.rotateX(-Math.PI / 2);
         return geom;
     }, [points3D_flat]);
@@ -70,10 +66,14 @@ const Flooring: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
     if (!geometry) return null;
 
     let material = floorMaterial;
-    if (item.type === ItemType.TATAMI) material = tatamiMaterial;
+    let yPosition = 0.01;
+    if (item.type === ItemType.TATAMI) {
+        material = tatamiMaterial;
+        yPosition += 0.18; // 18cm up
+    }
 
     return (
-        <mesh geometry={geometry} rotation={[0, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
+        <mesh geometry={geometry} rotation={[0, 0, 0]} position={[0, yPosition, 0]} receiveShadow>
             <primitive object={material} attach="material" />
         </mesh>
     );
@@ -81,28 +81,32 @@ const Flooring: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
 
 const Closet: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
     const points3D_flat = useMemo(() => {
-        const reversedPoints = [...item.points].reverse();
-        return reversedPoints.map(p => get3DPoint(p));
+        return item.points.map(p => get3DPoint(p));
     }, [item.points, get3DPoint]);
 
     const geometry = useMemo(() => {
         if (points3D_flat.length < 3) return null;
         const shape = new THREE.Shape(points3D_flat.map(v => new THREE.Vector2(v.x, v.z)));
+        const height = item.type === ItemType.KITCHEN ? (item.height || 0.85) : (item.height || 2.2);
         const extrudeSettings = {
             steps: 1,
-            depth: item.height || 2.2,
+            depth: height,
             bevelEnabled: false,
         };
         const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
         geom.rotateX(-Math.PI / 2);
         return geom;
-    }, [points3D_flat, item.height]);
+    }, [points3D_flat, item.height, item.type]);
     
     if (!geometry) return null;
 
+    const material = item.type === ItemType.KITCHEN 
+        ? new THREE.MeshStandardMaterial({ color: "#EF4444", side: THREE.DoubleSide })
+        : new THREE.MeshStandardMaterial({ color: "#FFE4C4", side: THREE.DoubleSide });
+
     return (
         <mesh geometry={geometry} position={[0, 0.01, 0]} castShadow receiveShadow>
-            <meshStandardMaterial color="#FFE4C4" /> {/* Bisque */}
+            <primitive object={material} attach="material" />
         </mesh>
     );
 };
@@ -136,9 +140,6 @@ const Furniture: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
     let width = 0.5, height = 0.5, depth = 0.5;
 
     switch (item.type) {
-        case ItemType.KITCHEN:
-            color = '#EF4444'; width = 2.4; height = 0.85; depth = 0.65;
-            break;
         case ItemType.BATH:
             color = '#3B82F6'; width = 1.6; height = 2.0; depth = 1.6;
             break;
@@ -220,13 +221,15 @@ const Scene: React.FC<Editor3DProps> = ({ site, items, backgroundImage, imageSiz
     return new THREE.Vector3(
       (p.x - imageSize.width / 2) * meterPerPixel,
       0,
-      (p.y - imageSize.height / 2) * meterPerPixel
+      -(p.y - imageSize.height / 2) * meterPerPixel
     );
   }, [imageSize, scale]);
 
   const groundPlaneSize = useMemo(() => imageSize && scale
     ? { width: imageSize.width * (1/scale), height: imageSize.height * (1/scale) }
     : { width: 100, height: 100 }, [imageSize, scale]);
+  
+  const imageOffsetYInMeters = 0;
 
   return (
     <>
@@ -237,7 +240,7 @@ const Scene: React.FC<Editor3DProps> = ({ site, items, backgroundImage, imageSiz
       <group>
         <group rotation={[0, -rotation * Math.PI / 180, 0]}>
             {backgroundImage && (
-                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, imageOffsetYInMeters]} receiveShadow>
                 <planeGeometry args={[groundPlaneSize.width, groundPlaneSize.height]} />
                 <meshStandardMaterial map={texture} />
                 </mesh>
@@ -258,8 +261,8 @@ const Scene: React.FC<Editor3DProps> = ({ site, items, backgroundImage, imageSiz
                     case ItemType.WINDOW:
                         return <Window key={key} item={item} get3DPoint={get3DPoint} />;
                     case ItemType.CLOSET:
-                        return <Closet key={key} item={item} get3DPoint={get3DPoint} />;
                     case ItemType.KITCHEN:
+                        return <Closet key={key} item={item} get3DPoint={get3DPoint} />;
                     case ItemType.BATH:
                     case ItemType.TOILET:
                     case ItemType.WASHBASIN:

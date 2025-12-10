@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 export interface Point {
@@ -82,6 +83,18 @@ export interface ItemInfo {
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
   defaultHeight?: number;
 }
+
+// FIX: Added shared ConfirmationState type to resolve type error between App and Editor2D.
+export type ConfirmationState = {
+    type: 'site' | 'item';
+    points: Point[];
+    itemType?: ItemType;
+} | {
+    type: 'overwrite_intersecting_item';
+    newItemPoints: Point[];
+    newItemType: ItemType;
+    intersectedItemIds: string[];
+};
 
 export type BlockType = 'normal' | 'decorative_a' | 'decorative_b';
 export type FenceType = 'none' | 'mesh' | 'horizontal' | 'vertical';
