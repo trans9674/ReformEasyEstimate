@@ -29,6 +29,17 @@
       .animate-pinch-hint {
         animation: aistudio-fade-out 3s forwards ease-in-out;
       }
+
+      @keyframes aistudio-swipe-right-to-left {
+        0% { transform: translateX(20px); opacity: 0; }
+        30% { transform: translateX(0); opacity: 1; }
+        70% { transform: translateX(-20px); opacity: 1; }
+        100% { transform: translateX(-20px); opacity: 0; }
+      }
+      .animate-swipe-hint {
+        position: relative;
+        animation: aistudio-swipe-right-to-left 2.5s ease-in-out infinite;
+      }
     </style>
   <script type="importmap">
 {

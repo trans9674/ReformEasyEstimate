@@ -10,7 +10,7 @@ interface InstructionalModalProps {
 export const InstructionalModal: React.FC<InstructionalModalProps> = ({ title, message, buttonText, onConfirm }) => {
   return (
     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl text-left max-w-md w-full">
+      <div className="bg-white p-6 rounded-lg shadow-xl text-left max-w-md w-full transform scale-70">
         <h3 className="text-xl font-bold mb-4 text-gray-800">{title}</h3>
         <div className="mb-6 text-gray-700 space-y-2">
             {message}

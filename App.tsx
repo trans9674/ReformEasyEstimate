@@ -15,6 +15,7 @@ import { FlipModal } from './components/FlipModal';
 import { ImageAdjuster } from './components/ImageAdjuster';
 import { CameraIcon } from './components/Icons';
 import { SetupStepper } from './components/SetupStepper';
+import { InstructionalModal } from './components/InstructionalModal';
 import polygonClipping from 'polygon-clipping';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -152,6 +153,7 @@ const App: React.FC = () => {
   const [rotation, setRotation] = useState(0); // degrees
   const [rotationAdjusted, setRotationAdjusted] = useState(false);
   const [isSiteFinalized, setIsSiteFinalized] = useState(false);
+  const [isStep2ModalOpen, setIsStep2ModalOpen] = useState(false);
 
 
   const commitState = useCallback((newSite: Site, newItems: ExteriorItem[], newScale: number | null, newDrawings: DrawingElement[]) => {
@@ -438,68 +440,61 @@ const App: React.FC = () => {
                 isSnapped = true;
             }
         }
-
-        if (!isSnapped) {
-             finalPoint = point;
-        }
         
         const itemInfo = ITEM_CATALOG[activeItemType];
+        
+        // Orthogonal drawing for all multi-point items
+        if (itemInfo.pointsRequired > 1 && tempPoints.length > 0) {
+            const lastPoint = tempPoints[tempPoints.length - 1];
+            const dx = finalPoint.x - lastPoint.x;
+            const dy = finalPoint.y - lastPoint.y;
+            const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+            const snapThreshold = 20;
+
+            const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
+            const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
+
+            const allPointsForSnap = [...tempPoints, ...site.points];
+            const snapXCoords = allPointsForSnap.map(p => p.x);
+            const snapYCoords = allPointsForSnap.map(p => p.y);
+
+            if (isHorizontalIntent) {
+                finalPoint.y = lastPoint.y;
+                let closestX = finalPoint.x;
+                let minDx = snapDistanceSVG;
+                for (const x of snapXCoords) {
+                    const dist = Math.abs(finalPoint.x - x);
+                    if (dist < minDx) {
+                        minDx = dist;
+                        closestX = x;
+                    }
+                }
+                finalPoint.x = closestX;
+            } else if (isVerticalIntent) {
+                finalPoint.x = lastPoint.x;
+                let closestY = finalPoint.y;
+                let minDy = snapDistanceSVG;
+                for (const y of snapYCoords) {
+                    const dist = Math.abs(finalPoint.y - y);
+                    if (dist < minDy) {
+                        minDy = dist;
+                        closestY = y;
+                    }
+                }
+                finalPoint.y = closestY;
+            }
+        }
+        
         const isPolygon = itemInfo.unit === 'm²';
         
         if (isPolygon) {
             const currentPoints = tempPoints;
-
-            if (
-                (activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) &&
-                currentPoints.length > 0
-            ) {
-                const lastPoint = currentPoints[currentPoints.length - 1];
-
-                const dx = finalPoint.x - lastPoint.x;
-                const dy = finalPoint.y - lastPoint.y;
-                const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-                const snapThreshold = 20;
-
-                const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
-                const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
-
-                const allPointsForSnap = [...currentPoints, ...site.points];
-                const snapXCoords = allPointsForSnap.map(p => p.x);
-                const snapYCoords = allPointsForSnap.map(p => p.y);
-
-                if (isHorizontalIntent) {
-                    finalPoint.y = lastPoint.y; // Maintain right angle (horizontal)
-                    let closestX = finalPoint.x;
-                    let minDx = snapDistanceSVG;
-                    for (const x of snapXCoords) {
-                        const dist = Math.abs(finalPoint.x - x);
-                        if (dist < minDx) {
-                            minDx = dist;
-                            closestX = x;
-                        }
-                    }
-                    finalPoint.x = closestX;
-                } else if (isVerticalIntent) {
-                    finalPoint.x = lastPoint.x; // Maintain right angle (vertical)
-                    let closestY = finalPoint.y;
-                    let minDy = snapDistanceSVG;
-                    for (const y of snapYCoords) {
-                        const dist = Math.abs(finalPoint.y - y);
-                        if (dist < minDy) {
-                            minDy = dist;
-                            closestY = y;
-                        }
-                    }
-                    finalPoint.y = closestY;
-                }
-            }
-            
             const closeSnapDistance = (snapDistancePixels * 4.0) / zoom;
-
+            
             if (currentPoints.length >= 2 && getDistance(finalPoint, currentPoints[0]) < closeSnapDistance) {
                 let pointsToConfirm = [...currentPoints];
-
-                if ((activeItemType === ItemType.FLOORING || activeItemType === ItemType.TATAMI) && site.points.length >= 3) {
+                
+                if (site.points.length >= 3) {
                     try {
                         const siteRing = site.points.map(p => [p.x, p.y] as [number, number]);
                         if (siteRing[0][0] !== siteRing[siteRing.length-1][0] || siteRing[0][1] !== siteRing[siteRing.length-1][1]) {
@@ -510,7 +505,6 @@ const App: React.FC = () => {
                         if (slabRing[0][0] !== slabRing[slabRing.length-1][0] || slabRing[0][1] !== slabRing[slabRing.length-1][1]) {
                              slabRing.push([slabRing[0][0], slabRing[0][1]]);
                         }
-
                         const intersected = polygonClipping.intersection([slabRing], [siteRing]);
 
                         if (intersected.length > 0 && intersected[0].length > 0) {
@@ -531,7 +525,6 @@ const App: React.FC = () => {
                         console.error("Clipping failed:", e);
                     }
                 }
-
                 setPendingConfirmation({ type: 'item', points: pointsToConfirm, itemType: activeItemType });
             } else {
                 setTempPoints(prev => [...prev, finalPoint]);
@@ -539,14 +532,26 @@ const App: React.FC = () => {
         } else { // Line or Point item
             const newTempPoints = [...tempPoints, finalPoint];
             if (newTempPoints.length === itemInfo.pointsRequired) {
-                const newItems = [...items, {
-                    id: `${Date.now()}`,
-                    type: activeItemType,
-                    points: newTempPoints,
-                    height: itemInfo.defaultHeight,
-                }];
-                setItems(newItems);
-                commitState(site, newItems, scale, drawings);
+                let finalItemPoints = newTempPoints;
+
+                if (itemInfo.pointsRequired > 1 && site.points.length >= 3) {
+                    const allPointsInside = finalItemPoints.every(p => isPointInPolygon(p, site.points));
+                    if (!allPointsInside) {
+                        finalItemPoints = [];
+                        alert('アイテムは外周の内側に配置してください。');
+                    }
+                }
+
+                if (finalItemPoints.length > 0) {
+                    const newItems = [...items, {
+                        id: `${Date.now()}`,
+                        type: activeItemType,
+                        points: finalItemPoints,
+                        height: itemInfo.defaultHeight,
+                    }];
+                    setItems(newItems);
+                    commitState(site, newItems, scale, drawings);
+                }
                 setTempPoints([]);
             } else {
                 setTempPoints(newTempPoints);
@@ -667,7 +672,7 @@ const App: React.FC = () => {
   }, [toolMode, site.points]);
 
   const handleSiteVertexMouseDown = useCallback((vertexIndex: number) => {
-    if (toolMode !== ToolMode.EDIT_SITE) return;
+    if (toolMode !== ToolMode.EDIT_SITE && toolMode !== ToolMode.DRAW_SITE) return;
     setEditingState({
         type: 'vertex',
         vertexIndex,
@@ -693,11 +698,31 @@ const App: React.FC = () => {
         newSitePoints[p2Index] = newP2;
     
     } else if (editingState.type === 'vertex') {
-        newSitePoints[editingState.vertexIndex] = movePoint;
+        const { vertexIndex } = editingState;
+        const numPoints = newSitePoints.length;
+        
+        const isEditingSiteShape = toolMode === ToolMode.EDIT_SITE || (toolMode === ToolMode.DRAW_SITE && currentSetupStep === 3);
+
+        if (isEditingSiteShape && numPoints >= 3) {
+            const prevIndex = (vertexIndex - 1 + numPoints) % numPoints;
+            const nextIndex = (vertexIndex + 1) % numPoints;
+            const prevPoint = newSitePoints[prevIndex];
+            const nextPoint = newSitePoints[nextIndex];
+
+            const candidate1 = { x: prevPoint.x, y: nextPoint.y };
+            const candidate2 = { x: nextPoint.x, y: prevPoint.y };
+            
+            const dist1 = getDistance(movePoint, candidate1);
+            const dist2 = getDistance(movePoint, candidate2);
+            
+            newSitePoints[vertexIndex] = dist1 < dist2 ? candidate1 : candidate2;
+        } else {
+            newSitePoints[vertexIndex] = movePoint;
+        }
     }
     setSite({ ...site, points: newSitePoints });
 
-  }, [editingState, site]);
+  }, [editingState, site, toolMode, currentSetupStep]);
 
   const handleCanvasMouseUp = useCallback(() => {
     if(editingState){
@@ -898,6 +923,12 @@ const App: React.FC = () => {
     return 5; // setup is complete
   }, [isImageLoaded, rotationAdjusted, isSiteFinalized, scale]);
 
+  useEffect(() => {
+    if (currentSetupStep === 2) {
+        setIsStep2ModalOpen(true);
+    }
+  }, [currentSetupStep]);
+
   const handleGoToStep = useCallback((step: number) => {
     if (step >= currentSetupStep) return;
 
@@ -917,9 +948,11 @@ const App: React.FC = () => {
                 break;
             case 3:
                 setIsSiteFinalized(false);
+                setSite({ points: [], boundaryTypes: [], vertexHeights: [] });
                 setScale(null);
                 setScalePoints([]);
                 setToolMode(ToolMode.DRAW_SITE);
+                commitState({ points: [], boundaryTypes: [], vertexHeights: [] }, items, null, drawings);
                 break;
         }
     }
@@ -991,6 +1024,24 @@ const App: React.FC = () => {
             />
           )}
           
+          {isStep2ModalOpen && (
+            <InstructionalModal
+                title="画像の配置調整"
+                message={
+                    <>
+                        <p className="mb-4">
+                            読み込んだ間取り図がまっすぐになるように、調整してください。
+                        </p>
+                        <div className="w-1/2 mx-auto overflow-hidden p-2">
+                          <img src="http://25663cc9bda9549d.main.jp/aistudio/reform/pitchJPG.JPG" alt="操作説明" className="w-full rounded-md animate-swipe-hint" />
+                        </div>
+                    </>
+                }
+                buttonText="OK"
+                onConfirm={() => setIsStep2ModalOpen(false)}
+            />
+          )}
+
           {viewMode === ViewMode.TWO_D ? (
             <Editor2D
               backgroundImage={backgroundImage}
