@@ -22,6 +22,7 @@ interface ItemComponentProps {
 }
 
 // Basic textures and materials
+const floorMaterial = new THREE.MeshStandardMaterial({ color: '#D2B48C', transparent: true, opacity: 0.8 }); // Light wood
 const tatamiMaterial = new THREE.MeshStandardMaterial({ color: '#ADDB88', transparent: true, opacity: 0.8 }); // Greenish
 const wallMaterial = new THREE.MeshStandardMaterial({ color: '#F0F0F0', side: THREE.DoubleSide });
 
@@ -50,17 +51,6 @@ const Wall: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
 };
 
 const Flooring: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
-    const floorTexture = useLoader(THREE.TextureLoader, 'http://25663cc9bda9549d.main.jp/aistudio/linekitchen/floortexture/oakfloor.jpg');
-    
-    floorTexture.wrapS = THREE.RepeatWrapping;
-    floorTexture.wrapT = THREE.RepeatWrapping;
-
-    const floorMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-        map: floorTexture,
-        transparent: true,
-        opacity: 0.8,
-    }), [floorTexture]);
-
     const points3D_flat = useMemo(() => {
         // 2D座標(Y軸下向き)で反時計回りの頂点リストは、3DのXZ平面(Y軸上向き)から見ると時計回りになる。
         // THREE.Shapeは反時計回りを期待するため、頂点リストの順序を逆転させる。
@@ -72,17 +62,6 @@ const Flooring: React.FC<ItemComponentProps> = ({ item, get3DPoint }) => {
         if (points3D_flat.length < 3) return null;
         const shape = new THREE.Shape(points3D_flat.map(v => new THREE.Vector2(v.x, v.z)));
         const geom = new THREE.ShapeGeometry(shape);
-        
-        const position = geom.attributes.position;
-        const uv = geom.attributes.uv;
-        const textureScale = 2; // Adjust this value to change texture tiling. Larger value = smaller texture pattern.
-        for(let i = 0; i < position.count; i++) {
-            const x = position.getX(i);
-            const z = position.getY(i); // In ShapeGeometry, the Y coordinate corresponds to the Z in our 3D world
-            uv.setXY(i, x / textureScale, z / textureScale);
-        }
-        uv.needsUpdate = true;
-        
         // Rotate to lie flat on the XZ plane
         geom.rotateX(-Math.PI / 2);
         return geom;
