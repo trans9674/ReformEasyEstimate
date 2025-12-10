@@ -98,13 +98,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     }`}
                 >
                     <EditIcon className="w-5 h-5" />
-                    <span>部屋形状を編集</span>
+                    <span>敷地形状を編集</span>
                 </button>
             </div>
         </div>
 
         <div className="pt-2 border-t">
-            <h3 className="text-sm font-semibold text-gray-600 mb-2">設備・内装を追加</h3>
+            <h3 className="text-sm font-semibold text-gray-600 mb-2">エクステリアを追加</h3>
             <div className="grid grid-cols-2 gap-2">
                 {Object.entries(ITEM_CATALOG).map(([type, { name, icon: Icon }]) => (
                 <button
@@ -133,7 +133,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     <>
         {/* DESKTOP LAYOUT */}
         <aside className="hidden md:flex w-80 bg-white h-full shadow-lg flex-col p-4 overflow-y-auto z-10">
-            <h1 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">リフォーム見積り</h1>
+            <h1 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">外構見積り</h1>
             <div className="flex-grow">
                 {renderTools()}
             </div>
@@ -142,7 +142,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         {/* MOBILE LAYOUT */}
         <div className="md:hidden">
             <div className="fixed bottom-0 left-0 w-full z-30 bg-white/80 backdrop-blur-sm border-t border-gray-200 shadow-2xl pointer-events-auto p-2 pb-safe">
-                <div className="grid grid-cols-5 gap-1">
+                <div className="grid grid-cols-4 gap-1">
                     {Object.entries(ITEM_CATALOG).map(([type, { name, icon: Icon }]) => (
                         <button
                             key={type}
