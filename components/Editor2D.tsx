@@ -576,13 +576,8 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         const snapDistanceSVG = snapDistancePixels / zoom;
         const lastPoint = lastActivePoint!; 
         
-        const dx = finalPoint.x - lastPoint.x;
-        const dy = finalPoint.y - lastPoint.y;
-        const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-        const snapThreshold = 20;
-
-        const isHorizontalIntent = Math.abs(angleDeg) < snapThreshold || Math.abs(Math.abs(angleDeg) - 180) < snapThreshold;
-        const isVerticalIntent = Math.abs(Math.abs(angleDeg) - 90) < snapThreshold;
+        const dxAbs = Math.abs(finalPoint.x - lastPoint.x);
+        const dyAbs = Math.abs(finalPoint.y - lastPoint.y);
         
         const pointsForSnapping = toolMode === ToolMode.DRAW_SITE 
             ? site.points 
@@ -590,7 +585,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
         const snapXCoords = pointsForSnapping.map(p => p.x);
         const snapYCoords = pointsForSnapping.map(p => p.y);
 
-        if (isHorizontalIntent) {
+        if (dxAbs > dyAbs) { // Horizontal movement is dominant
             finalPoint.y = lastPoint.y;
             let closestX = finalPoint.x;
             let minDx = snapDistanceSVG;
@@ -602,7 +597,7 @@ export const Editor2D: React.FC<Editor2DProps> = ({
                 }
             }
             finalPoint.x = closestX;
-        } else if (isVerticalIntent) {
+        } else { // Vertical movement is dominant
             finalPoint.x = lastPoint.x;
             let closestY = finalPoint.y;
             let minDy = snapDistanceSVG;
