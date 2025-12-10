@@ -155,6 +155,16 @@ const App: React.FC = () => {
   const [isSiteFinalized, setIsSiteFinalized] = useState(false);
   const [isStep2ModalOpen, setIsStep2ModalOpen] = useState(false);
 
+  // FIX: Moved currentSetupStep and related constants before their use in useCallback hooks to resolve a declaration error.
+  const isImageLoaded = !!backgroundImage;
+  const currentSetupStep = useMemo(() => {
+    if (!isImageLoaded) return 1;
+    if (!rotationAdjusted) return 2;
+    if (!isSiteFinalized) return 3;
+    if (!scale) return 4;
+    return 5; // setup is complete
+  }, [isImageLoaded, rotationAdjusted, isSiteFinalized, scale]);
+
 
   const commitState = useCallback((newSite: Site, newItems: ExteriorItem[], newScale: number | null, newDrawings: DrawingElement[]) => {
     const newState = { site: newSite, items: newItems, scale: newScale, drawings: newDrawings };
@@ -173,10 +183,9 @@ const App: React.FC = () => {
   }, [toolMode]);
 
   const isSiteDefined = site.points.length > 0;
+  const isSetupComplete = !!(isImageLoaded && rotationAdjusted && isSiteFinalized && scale);
 
   useEffect(() => {
-    const isImageLoaded = !!backgroundImage;
-    const isSetupComplete = !!(isImageLoaded && rotationAdjusted && isSiteFinalized && scale);
     
     if (isSetupComplete) {
         if(toolMode === ToolMode.DRAW_SITE || toolMode === ToolMode.SET_SCALE){
@@ -194,7 +203,7 @@ const App: React.FC = () => {
     } else if (!scale) {
       setToolMode(ToolMode.SET_SCALE);
     }
-  }, [backgroundImage, isSiteFinalized, rotationAdjusted, scale, toolMode]);
+  }, [backgroundImage, isSiteFinalized, rotationAdjusted, scale, toolMode, isSetupComplete]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -912,16 +921,6 @@ const App: React.FC = () => {
   }, [items, scale]);
 
   const totalCost = useMemo(() => Math.round(quote.reduce((sum, item) => sum + item.total, 0)), [quote]);
-  const isImageLoaded = !!backgroundImage;
-  const isSetupComplete = !!(isImageLoaded && rotationAdjusted && isSiteFinalized && scale);
-
-  const currentSetupStep = useMemo(() => {
-    if (!isImageLoaded) return 1;
-    if (!rotationAdjusted) return 2;
-    if (!isSiteFinalized) return 3;
-    if (!scale) return 4;
-    return 5; // setup is complete
-  }, [isImageLoaded, rotationAdjusted, isSiteFinalized, scale]);
 
   useEffect(() => {
     if (currentSetupStep === 2) {
